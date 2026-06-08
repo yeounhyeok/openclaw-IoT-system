@@ -1,0 +1,432 @@
+{
+  "version": 1,
+  "author": "ROLEX for Yeounhyeok",
+  "editor": "wokwi",
+  "parts": [
+    {
+      "type": "wokwi-arduino-uno",
+      "id": "uno",
+      "top": 170,
+      "left": 20,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-breadboard",
+      "id": "bb1",
+      "top": -90,
+      "left": 300,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-servo",
+      "id": "servoPc",
+      "top": -145,
+      "left": -150,
+      "attrs": {
+        "hornColor": "blue"
+      }
+    },
+    {
+      "type": "wokwi-servo",
+      "id": "servoLight",
+      "top": 5,
+      "left": -150,
+      "attrs": {
+        "hornColor": "yellow",
+        "label": "LIGHT LEFT/OFF RIGHT/ON"
+      }
+    },
+    {
+      "type": "wokwi-lcd1602",
+      "id": "lcd1",
+      "top": -250,
+      "left": 280,
+      "attrs": {
+        "pins": "i2c"
+      }
+    },
+    {
+      "type": "wokwi-rgb-led",
+      "id": "rgb1",
+      "top": 15,
+      "left": 590,
+      "attrs": {
+        "common": "cathode"
+      }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r1",
+      "top": 85,
+      "left": 525,
+      "attrs": {
+        "value": "220"
+      }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r2",
+      "top": 125,
+      "left": 525,
+      "attrs": {
+        "value": "220"
+      }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r3",
+      "top": 165,
+      "left": 525,
+      "attrs": {
+        "value": "220"
+      }
+    },
+    {
+      "type": "wokwi-buzzer",
+      "id": "bz1",
+      "top": 255,
+      "left": 575,
+      "attrs": {
+        "volume": "0.1"
+      }
+    },
+    {
+      "type": "wokwi-dht22",
+      "id": "dht1",
+      "top": -215,
+      "left": 620,
+      "attrs": {
+        "temperature": "25",
+        "humidity": "55"
+      }
+    },
+    {
+      "type": "wokwi-pir-motion-sensor",
+      "id": "pir1",
+      "top": -135,
+      "left": 790,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btnAlarm",
+      "top": 300,
+      "left": 345,
+      "attrs": {
+        "color": "purple",
+        "label": "ALARM TOGGLE"
+      }
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btnLight",
+      "top": 300,
+      "left": 500,
+      "attrs": {
+        "color": "yellow",
+        "label": "LIGHT TOGGLE"
+      }
+    },
+    {
+      "type": "wokwi-photoresistor-sensor",
+      "id": "cds1",
+      "top": -20,
+      "left": 790,
+      "attrs": {
+        "lux": "800",
+        "label": "CDS SENSOR"
+      }
+    }
+  ],
+  "connections": [
+    [
+      "uno:5V",
+      "bb1:tp.1",
+      "red",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "uno:GND.1",
+      "bb1:tn.1",
+      "black",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "uno:5V",
+      "bb1:bp.1",
+      "red",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "uno:GND.2",
+      "bb1:bn.1",
+      "black",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "servoPc:V+",
+      "bb1:tp.5",
+      "red",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "servoPc:GND",
+      "bb1:tn.5",
+      "black",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "servoPc:PWM",
+      "uno:9",
+      "blue",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "servoLight:V+",
+      "bb1:tp.8",
+      "red",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "servoLight:GND",
+      "bb1:tn.8",
+      "black",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "servoLight:PWM",
+      "uno:10",
+      "orange",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "lcd1:VCC",
+      "bb1:tp.15",
+      "red",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "lcd1:GND",
+      "bb1:tn.15",
+      "black",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "lcd1:SDA",
+      "uno:A4",
+      "green",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "lcd1:SCL",
+      "uno:A5",
+      "blue",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "dht1:VCC",
+      "bb1:tp.25",
+      "red",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "dht1:GND",
+      "bb1:tn.25",
+      "black",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "dht1:SDA",
+      "uno:2",
+      "green",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "pir1:VCC",
+      "bb1:tp.32",
+      "red",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "pir1:GND",
+      "bb1:tn.32",
+      "black",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "pir1:OUT",
+      "uno:11",
+      "purple",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "rgb1:COM",
+      "bb1:bn.30",
+      "black",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "rgb1:R",
+      "r1:2",
+      "red",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "rgb1:G",
+      "r2:2",
+      "green",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "rgb1:B",
+      "r3:2",
+      "blue",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "r1:1",
+      "uno:3",
+      "red",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "r2:1",
+      "uno:5",
+      "green",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "r3:1",
+      "uno:6",
+      "blue",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "bz1:1",
+      "uno:8",
+      "purple",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "bz1:2",
+      "bb1:bn.40",
+      "black",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "btnAlarm:1.l",
+      "uno:4",
+      "blue",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "btnAlarm:2.l",
+      "bb1:bn.45",
+      "black",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "btnLight:1.l",
+      "uno:7",
+      "orange",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "btnLight:2.l",
+      "bb1:bn.50",
+      "black",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "cds1:VCC",
+      "bb1:tp.36",
+      "red",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "cds1:GND",
+      "bb1:tn.36",
+      "black",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "cds1:AO",
+      "uno:A0",
+      "orange",
+      [
+        "v0"
+      ]
+    ]
+  ],
+  "dependencies": {}
+}

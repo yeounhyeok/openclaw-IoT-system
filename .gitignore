@@ -1,0 +1,5 @@
+sketch/arduino_secrets.h
+*.tmp
+*.log
+.DS_Store
+Thumbs.db
