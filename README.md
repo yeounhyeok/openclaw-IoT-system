@@ -237,6 +237,8 @@ STATUS
 PC_POWER\n
 ```
 
+MIT App Inventor로 앱을 만들 때는 [docs/appinventor_openclaw_remote.md](docs/appinventor_openclaw_remote.md)를 그대로 따라 만들면 됩니다. 구성은 `Connect HC-05`, `PC Power`, `Alarm Toggle`, `Alarm On/Off`, `Status`, custom command 입력으로 잡았습니다.
+
 ### HC-05 배선
 
 Arduino 코드는 HC-05를 `Serial1`로 읽습니다. Uno R4 WiFi의 USB Serial과 `D0/D1` 하드웨어 Serial은 분리되어 있어서, USB로 Serial Monitor를 보면서 HC-05를 `D0/D1`에 연결해도 됩니다.
