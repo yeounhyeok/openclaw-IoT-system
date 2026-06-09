@@ -78,7 +78,8 @@ Use the installed one-command wrappers first for fast responses. They load `~/.h
 | Fallback text command | `openclaw command PC_POWER` / `ALARM_TOGGLE` / `ALARM_ON` / `ALARM_OFF` / `STATUS` |
 
 Implementation lives at `skills/openclaw-ha-control/scripts/openclaw`. Optional local wrappers may point to this script. The script sets `User-Agent: curl/8.5.0` because Cloudflare may block Python urllib's default User-Agent with `403 error code: 1010`.
-
+For setup details, wrapper inventory, and verification commands, see `references/openclaw-cli-setup.md`.
+For the alarm-specific control/verification path and the `input_boolean` vs Arduino status pitfall, see `references/alarm-control-path.md`.
 
 PC power commands physically press the power button once. If user intent is ambiguous, confirm once before running `openclaw-pc-power`.
 
@@ -217,8 +218,10 @@ When receiving `sensor.openclaw_status` events, temperature and humidity are in 
 
 - Answer the user in Korean unless they ask otherwise.
 - For control commands, state exactly what was sent and the resulting HA state if available.
-- For status, summarize only useful fields: online/offline, temperature, humidity, alarm, motion, WiFi IP, RSSI.
-- For temperature/humidity-only requests, answer briefly like `현재 온도 28도, 습도 47%입니다.`
+- For status, call the device/system the `IoT 시스템` rather than `OpenClaw` unless referring to entity IDs or the skill/repo name. Say `IoT 시스템 온라인/오프라인`.
+- Temperature and humidity are the user's room readings. Say `방 온도`, `방 습도`, or `운혁 님 방` rather than device temperature/humidity.
+- Summarize only useful fields: IoT system online/offline, room temperature, room humidity, alarm, motion, WiFi IP, RSSI.
+- For temperature/humidity-only requests, answer briefly like `운혁 님 방은 현재 28도, 습도 47%입니다.`
 - If HA returns `401` or `403`, say the token/auth path is wrong. If it returns `404`, say the entity ID or helper is missing/mismatched.
 
 ## Safety Notes
