@@ -1,0 +1,167 @@
+#!/usr/bin/env python3
+"""Fast OpenClaw Home Assistant control CLI.
+
+Reads HOME_ASSISTANT_TOKEN/HA_TOKEN and HA_HOST/HA_PORT from environment or ~/.hermes/.env.
+Never prints the token.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+DEFAULT_HOST = "ha.yeoun.org"
+DEFAULT_PORT = "443"
+
+STATUS_ENTITY = "sensor.openclaw_status"
+MOTION_ENTITY = "binary_sensor.openclaw_motion"
+ALARM_ENTITY = "input_boolean.openclaw_alarm"
+PC_POWER_ENTITY = "input_boolean.openclaw_pc_power"
+PC_POWER_BUTTON_ENTITY = "input_button.openclaw_pc_power"
+COMMAND_ENTITY = "input_text.openclaw_command"
+
+
+def load_env_file(path: Path) -> None:
+    if not path.exists():
+        return
+    for raw in path.read_text(errors="ignore").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        os.environ.setdefault(key, value)
+
+
+def config() -> tuple[str, str]:
+    load_env_file(Path.home() / ".hermes" / ".env")
+    token = os.environ.get("HOME_ASSISTANT_TOKEN") or os.environ.get("HA_TOKEN")
+    if not token:
+        raise SystemExit("ERROR: HOME_ASSISTANT_TOKEN or HA_TOKEN is missing")
+    host = os.environ.get("HA_HOST", DEFAULT_HOST)
+    port = str(os.environ.get("HA_PORT", DEFAULT_PORT))
+    scheme = "https" if port == "443" else "http"
+    base = f"{scheme}://{host}" if port in ("443", "80") else f"{scheme}://{host}:{port}"
+    return base, token
+
+
+def request(method: str, path: str, payload: dict | None = None) -> dict | list | str:
+    base, token = config()
+    data = None if payload is None else json.dumps(payload).encode()
+    req = urllib.request.Request(
+        base + path,
+        data=data,
+        method=method,
+        headers={
+            "Authorization": "Bearer " + token,
+            "Content-Type": "application/json",
+            # Cloudflare may block Python's default urllib User-Agent with 1010.
+            "User-Agent": "curl/8.5.0",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            body = r.read().decode()
+    except urllib.error.HTTPError as e:
+        body = e.read().decode(errors="ignore")[:300]
+        raise SystemExit(f"ERROR: HA HTTP {e.code} {e.reason}: {body}")
+    if not body:
+        return ""
+    try:
+        return json.loads(body)
+    except json.JSONDecodeError:
+        return body
+
+
+def state(entity_id: str) -> dict:
+    d = request("GET", "/api/states/" + entity_id)
+    if not isinstance(d, dict):
+        raise SystemExit("ERROR: unexpected HA response")
+    return d
+
+
+def status() -> None:
+    d = state(STATUS_ENTITY)
+    a = d.get("attributes") or {}
+    fields = {
+        "state": d.get("state"),
+        "temperature": a.get("temperature"),
+        "humidity": a.get("humidity"),
+        "alarm": a.get("alarm"),
+        "motion": a.get("motion"),
+        "bluetooth": a.get("bluetooth"),
+        "wifi_ip": a.get("wifi_ip"),
+        "wifi_rssi": a.get("wifi_rssi"),
+        "last_updated": d.get("last_updated"),
+    }
+    print(json.dumps(fields, ensure_ascii=False, separators=(",", ":")))
+
+
+def temp() -> None:
+    d = state(STATUS_ENTITY)
+    a = d.get("attributes") or {}
+    print(json.dumps({"temperature": a.get("temperature"), "humidity": a.get("humidity"), "last_updated": d.get("last_updated")}, ensure_ascii=False, separators=(",", ":")))
+
+
+def motion() -> None:
+    d = state(MOTION_ENTITY)
+    print(json.dumps({"motion": d.get("state"), "last_updated": d.get("last_updated")}, ensure_ascii=False, separators=(",", ":")))
+
+
+def alarm(on: bool) -> None:
+    svc = "turn_on" if on else "turn_off"
+    d = request("POST", f"/api/services/input_boolean/{svc}", {"entity_id": ALARM_ENTITY})
+    print(json.dumps({"sent": f"input_boolean.{svc}", "entity_id": ALARM_ENTITY, "ok": True}, ensure_ascii=False, separators=(",", ":")))
+
+
+def pc_power(use_button: bool = True) -> None:
+    # Current HA has input_button.openclaw_pc_power, while input_boolean.openclaw_pc_power may be absent.
+    # Prefer the button because every press changes its timestamp and produces a state_changed event.
+    if use_button:
+        request("POST", "/api/services/input_button/press", {"entity_id": PC_POWER_BUTTON_ENTITY})
+        sent = "input_button.press"
+        entity = PC_POWER_BUTTON_ENTITY
+    else:
+        request("POST", "/api/services/input_boolean/turn_on", {"entity_id": PC_POWER_ENTITY})
+        sent = "input_boolean.turn_on"
+        entity = PC_POWER_ENTITY
+    print(json.dumps({"sent": sent, "entity_id": entity, "ok": True}, ensure_ascii=False, separators=(",", ":")))
+
+
+def command(value: str) -> None:
+    # Force a state_changed event even when the same command is sent repeatedly.
+    request("POST", "/api/services/input_text/set_value", {"entity_id": COMMAND_ENTITY, "value": ""})
+    request("POST", "/api/services/input_text/set_value", {"entity_id": COMMAND_ENTITY, "value": value})
+    print(json.dumps({"sent": "input_text.set_value", "entity_id": COMMAND_ENTITY, "value": value, "ok": True}, ensure_ascii=False, separators=(",", ":")))
+
+
+def main() -> None:
+    p = argparse.ArgumentParser(description="OpenClaw Home Assistant fast CLI")
+    sub = p.add_subparsers(dest="cmd", required=True)
+    sub.add_parser("status", help="read full OpenClaw status")
+    sub.add_parser("temp", help="read room temperature/humidity")
+    sub.add_parser("motion", help="read PIR motion state")
+    sub.add_parser("alarm-on", help="turn alarm on")
+    sub.add_parser("alarm-off", help="turn alarm off")
+    sub.add_parser("pc-power", help="press PC power servo once via toggle helper")
+    sub.add_parser("pc-power-button", help="press PC power servo once via button helper")
+    cp = sub.add_parser("command", help="send fallback text command")
+    cp.add_argument("value", choices=["PC_POWER", "ALARM_TOGGLE", "ALARM_ON", "ALARM_OFF", "STATUS"])
+    args = p.parse_args()
+    if args.cmd == "status": status()
+    elif args.cmd == "temp": temp()
+    elif args.cmd == "motion": motion()
+    elif args.cmd == "alarm-on": alarm(True)
+    elif args.cmd == "alarm-off": alarm(False)
+    elif args.cmd == "pc-power": pc_power(True)
+    elif args.cmd == "pc-power-button": pc_power(True)
+    elif args.cmd == "command": command(args.value)
+
+
+if __name__ == "__main__":
+    main()

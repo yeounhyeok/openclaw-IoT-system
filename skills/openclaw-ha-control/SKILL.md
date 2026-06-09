@@ -1,6 +1,14 @@
 ---
 name: openclaw-ha-control
 description: Use when controlling or monitoring the OpenClaw Arduino IoT device through Home Assistant at ha.yeoun.org, including PC power servo control, alarm state, motion, temperature, humidity, WiFi status, REST service calls, and WebSocket state observation.
+version: 1.0.0
+author: Yeounhyeok / Hermes Agent
+license: MIT
+platforms: [linux, macos, windows]
+metadata:
+  hermes:
+    tags: [home-assistant, arduino, iot, openclaw, smart-home, websocket, rest]
+    related_skills: [pc-power-control, yeoun-cloudflare-tunnel-npm, openhue]
 ---
 
 # OpenClaw Home Assistant Control
@@ -12,7 +20,7 @@ Use this skill when the user asks to control or inspect the OpenClaw Arduino dev
 - Home Assistant base URL: `https://ha.yeoun.org`
 - REST API base: `https://ha.yeoun.org/api`
 - WebSocket API: `wss://ha.yeoun.org/api/websocket`
-- Authentication: use a Home Assistant long-lived access token from the agent secret store or environment, preferably `HA_TOKEN` or `HOME_ASSISTANT_TOKEN`.
+- Authentication: use a Home Assistant long-lived access token from the agent secret store or environment, preferably `HA_TOKEN` or `HOME_ASSISTANT_TOKEN`. In this Hermes profile, `HOME_ASSISTANT_TOKEN` may be set in `~/.hermes/.env`.
 - Never write, print, commit, or log the token.
 - Arduino command handling is WebSocket-first. REST `/api/states` is mainly used by Arduino for slow status/temperature/humidity uploads.
 
@@ -33,8 +41,8 @@ Read-only status from Arduino:
 Controls from Home Assistant to Arduino:
 
 - `input_boolean.openclaw_alarm`: alarm enable/disable toggle.
-- `input_boolean.openclaw_pc_power`: momentary PC power request. Turn it `on`; Arduino presses the servo once and resets it to `off`.
-- `input_button.openclaw_pc_power`: compatibility PC power button helper. Pressing it also triggers the servo once.
+- `input_boolean.openclaw_pc_power`: momentary PC power request if the toggle helper exists. Turn it `on`; Arduino presses the servo once and resets it to `off`.
+- `input_button.openclaw_pc_power`: current working PC power helper. Pressing it changes the timestamp and triggers the servo once; prefer this path when available.
 - `input_text.openclaw_command`: fallback/debug text command.
 
 Supported text commands:
@@ -47,12 +55,32 @@ Supported text commands:
 
 ## Natural Language Mapping
 
-- "PC 켜", "PC 꺼", "컴퓨터 전원 눌러", "전원 버튼 눌러" -> turn on `input_boolean.openclaw_pc_power`.
+- "PC 켜", "PC 꺼", "컴퓨터 전원 눌러", "전원 버튼 눌러" -> press `input_button.openclaw_pc_power` via `openclaw-pc-power` (current working path).
 - "알람 켜", "보안 켜" -> turn on `input_boolean.openclaw_alarm`.
 - "알람 꺼", "보안 꺼" -> turn off `input_boolean.openclaw_alarm`.
 - "상태 확인", "오픈클로 상태", "온습도", "온도", "습도", "움직임 감지됐어?" -> read `sensor.openclaw_status` and, if motion matters, `binary_sensor.openclaw_motion`.
 
 If a PC power request is ambiguous, confirm once before pressing. This command physically actuates a servo connected to a power button.
+
+## Agent Quick Commands
+
+Use the installed one-command wrappers first for fast responses. They load `~/.hermes/.env` themselves and never print the token.
+
+| Intent | Command |
+|---|---|
+| Full status | `openclaw-status` or `openclaw status` |
+| Temperature/humidity | `openclaw-temp` or `openclaw temp` |
+| Motion | `openclaw-motion` or `openclaw motion` |
+| Alarm on | `openclaw-alarm-on` or `openclaw alarm-on` |
+| Alarm off | `openclaw-alarm-off` or `openclaw alarm-off` |
+| PC power servo press | `openclaw-pc-power` or `openclaw pc-power` |
+| Compatibility button press | `openclaw-pc-power-button` or `openclaw pc-power-button` |
+| Fallback text command | `openclaw command PC_POWER` / `ALARM_TOGGLE` / `ALARM_ON` / `ALARM_OFF` / `STATUS` |
+
+Implementation lives at `skills/openclaw-ha-control/scripts/openclaw`. Optional local wrappers may point to this script. The script sets `User-Agent: curl/8.5.0` because Cloudflare may block Python urllib's default User-Agent with `403 error code: 1010`.
+
+
+PC power commands physically press the power button once. If user intent is ambiguous, confirm once before running `openclaw-pc-power`.
 
 ## REST Workflow
 
