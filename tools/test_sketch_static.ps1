@@ -99,6 +99,13 @@ $requiredSnippets = @(
   @{ Pattern = "void pollPcPowerServo()"; Message = "PC power servo should be non-blocking so HA WS remains responsive." },
   @{ Pattern = "void pollBeeper()"; Message = "Beeper should be non-blocking so HA WS remains responsive." },
   @{ Pattern = "PC_SERVO_PRESS_MS"; Message = "PC servo non-blocking timing constants are missing." },
+  @{ Pattern = "PC_SERVO_COOLDOWN_MS"; Message = "PC servo should have a cooldown for stable repeated presses." },
+  @{ Pattern = "pcPowerServoQueued = true;"; Message = "PC servo should coalesce repeated presses instead of stacking unstable queues." },
+  @{ Pattern = "pcPowerBeepsAfterServo"; Message = "PC power beep should be deferred until after servo motion." },
+  @{ Pattern = "PC power servo busy, queued once"; Message = "PC servo queue diagnostic log is missing." },
+  @{ Pattern = "void stopBeeper()"; Message = "Beeper should be stoppable before servo motion for stable servo timing." },
+  @{ Pattern = "bool isPcPowerServoBusy()"; Message = "Servo busy state helper is missing." },
+  @{ Pattern = "if (isPcPowerServoBusy()) {"; Message = "Loop should skip slow tasks while PC servo timing is active." },
   @{ Pattern = "for (byte i = 0; i < 4 && haWsClient.available() >= 2; i++)"; Message = "HA WS poll should drain several queued frames per loop." },
   @{ Pattern = "bool handleRemoteCommand(String command, const char *source)"; Message = "Shared remote command handler is missing." }
 )

@@ -137,7 +137,7 @@ Fritzing에서 바로 열 수 있는 회로 파일도 포함되어 있습니다.
 
 - WiFi: Uno R4 WiFi 내장 무선 기능으로 Home Assistant WSS/HTTP 연동
 - Bluetooth: HC-05 모듈로 Android 앱 근거리 제어
-- PC 전원 누르기: Android Bluetooth 또는 Home Assistant HTTP 명령을 받으면 PC 전원 서보가 동작
+- PC 전원 누르기: Android Bluetooth 또는 Home Assistant WebSocket 명령을 받으면 PC 전원 서보가 동작
 
 현재 `sketch/sketch.ino`에는 Uno R4 WiFi의 내장 BLE 코드, HC-05 Bluetooth UART 코드, WiFi 코드, Home Assistant WebSocket/HTTP 코드가 모두 들어가 있습니다. 단, Uno R4 WiFi의 내장 Bluetooth와 내장 WiFi는 같은 무선 모듈/안테나를 공유하므로 같은 순간에 둘을 동시에 켜는 방식은 사용할 수 없습니다.
 
@@ -302,7 +302,7 @@ Arduino는 `input_boolean.openclaw_alarm` 상태를 따라 알람을 켜고 끕�
 
 WebSocket이 켜져 있으면 HA 토글/버튼 변경은 `state_changed` 이벤트로 즉시 수신합니다. PC power helper reset과 물리 알람 버튼의 HA 동기화는 WebSocket `call_service`를 우선 사용하고, WS가 끊겼을 때만 HTTP로 fallback합니다. HTTP 요청은 온습도/상태 업로드, PIR 상태 전송, fallback helper reset에만 사용하며 명령 직후에는 즉시 status POST를 하지 않습니다. `ENABLE_HA_WS 0`으로 끄면 기존 HTTP polling fallback을 사용합니다.
 
-PC 전원 서보와 부저는 `delay()`로 loop를 막지 않는 비동기 방식입니다. 따라서 HA에서 PC 전원 버튼을 빠르게 다시 눌러도 WebSocket 수신과 helper reset이 계속 처리됩니다.
+PC 전원 서보와 부저는 `delay()`로 loop를 막지 않는 비동기 방식입니다. 서보 동작 중 들어온 추가 PC 전원 요청은 최대 1회로 병합해 다음 안정 구간에서 실행합니다. 부저는 서보 펄스와 겹치지 않도록 서보가 끝난 뒤 재생합니다. 서보가 실제로 움직이는 동안에는 HTTP/status/DHT 같은 느린 작업을 잠깐 건너뛰어, 네트워크 지연 때문에 서보가 한쪽 위치에 오래 멈추는 현상을 줄입니다.
 
 물리 알람 버튼을 누른 직후에는 로컬 상태를 우선합니다. HA에서 늦게 도착한 이전 WebSocket 이벤트가 알람을 다시 되돌리는 것을 막기 위해 짧은 동기화 구간 동안 반대 상태 이벤트를 무시합니다.
 

@@ -100,10 +100,15 @@
 #define HA_WS_RECONNECT_MS 5000
 #define HA_WS_PING_MS 30000
 #define HA_LOCAL_ALARM_GRACE_MS 1500
-#define PC_SERVO_PRESS_MS 300
-#define PC_SERVO_RECOVER_MS 120
+#define PC_SERVO_PRESS_MS 420
+#define PC_SERVO_RECOVER_MS 200
+#define PC_SERVO_COOLDOWN_MS 180
 #define BEEP_ON_MS 90
 #define BEEP_OFF_MS 90
+#define PC_SERVO_IDLE 0
+#define PC_SERVO_PRESSING 1
+#define PC_SERVO_RECOVERING 2
+#define PC_SERVO_COOLDOWN 3
 
 #if ENABLE_WIFI || ENABLE_HA_HTTP || ENABLE_HA_WS || ENABLE_MQTT
 #ifndef SECRET_WIFI_SSID
@@ -187,10 +192,10 @@ bool pendingHaStatusPost = false;
 bool pendingHaMotionOn = false;
 bool pendingHaAlarmSync = false;
 bool pendingHaPcPowerReset = false;
-bool pcPowerServoActive = false;
-bool pcPowerServoReturning = false;
 bool beepToneOn = false;
-byte pendingPcPowerPresses = 0;
+bool pcPowerServoQueued = false;
+byte pcPowerServoState = PC_SERVO_IDLE;
+byte pcPowerBeepsAfterServo = 0;
 byte beepPulsesRemaining = 0;
 byte haFastPollStep = 0;
 volatile byte alarmButtonInterruptCount = 0;
@@ -236,13 +241,21 @@ void beep(int count) {
   }
 
   byte requested = (byte)(count > 8 ? 8 : count);
-  if (requested > beepPulsesRemaining) {
-    beepPulsesRemaining = requested;
+  if (beepToneOn) {
+    noTone(BUZZER_PIN);
+    beepToneOn = false;
   }
+  beepPulsesRemaining = requested;
+  beepPhaseAt = millis() - BEEP_OFF_MS;
+}
 
-  if (!beepToneOn && beepPhaseAt == 0) {
-    beepPhaseAt = millis() - BEEP_OFF_MS;
+void stopBeeper() {
+  if (beepToneOn) {
+    noTone(BUZZER_PIN);
   }
+  beepToneOn = false;
+  beepPulsesRemaining = 0;
+  beepPhaseAt = 0;
 }
 
 void pollBeeper() {
@@ -269,42 +282,54 @@ void pollBeeper() {
 }
 
 void pressServoOnce(Servo &servo) {
-  if (pcPowerServoActive) {
-    if (pendingPcPowerPresses < 3) {
-      pendingPcPowerPresses++;
-    }
-    Serial.println("PC power servo busy, queued");
+  if (pcPowerServoState != PC_SERVO_IDLE) {
+    pcPowerServoQueued = true;
+    Serial.println("PC power servo busy, queued once");
     return;
   }
 
+  stopBeeper();
   servo.write(90);
-  pcPowerServoActive = true;
-  pcPowerServoReturning = false;
+  pcPowerServoState = PC_SERVO_PRESSING;
   pcPowerServoPhaseAt = millis();
 }
 
+bool isPcPowerServoBusy() {
+  return pcPowerServoState != PC_SERVO_IDLE;
+}
+
 void pollPcPowerServo() {
-  if (!pcPowerServoActive) {
+  if (pcPowerServoState == PC_SERVO_IDLE) {
     return;
   }
 
   unsigned long now = millis();
-  if (!pcPowerServoReturning && now - pcPowerServoPhaseAt >= PC_SERVO_PRESS_MS) {
+  if (pcPowerServoState == PC_SERVO_PRESSING && now - pcPowerServoPhaseAt >= PC_SERVO_PRESS_MS) {
     pcPowerServo.write(0);
-    pcPowerServoReturning = true;
+    pcPowerServoState = PC_SERVO_RECOVERING;
     pcPowerServoPhaseAt = now;
     return;
   }
 
-  if (pcPowerServoReturning && now - pcPowerServoPhaseAt >= PC_SERVO_RECOVER_MS) {
-    pcPowerServoActive = false;
-    pcPowerServoReturning = false;
+  if (pcPowerServoState == PC_SERVO_RECOVERING && now - pcPowerServoPhaseAt >= PC_SERVO_RECOVER_MS) {
     setRgb(alarmOn, !alarmOn, alarmOn); // purple if alarm armed, green otherwise
+    pcPowerServoState = PC_SERVO_COOLDOWN;
+    pcPowerServoPhaseAt = now;
+    return;
+  }
 
-    if (pendingPcPowerPresses > 0) {
-      pendingPcPowerPresses--;
+  if (pcPowerServoState == PC_SERVO_COOLDOWN && now - pcPowerServoPhaseAt >= PC_SERVO_COOLDOWN_MS) {
+    pcPowerServoState = PC_SERVO_IDLE;
+    if (pcPowerServoQueued) {
+      pcPowerServoQueued = false;
       pressServoOnce(pcPowerServo);
-      beep(1);
+      pcPowerBeepsAfterServo = 2;
+      return;
+    }
+
+    if (pcPowerBeepsAfterServo > 0) {
+      beep(pcPowerBeepsAfterServo);
+      pcPowerBeepsAfterServo = 0;
     }
   }
 }
@@ -349,7 +374,7 @@ void pressPcPowerByRemoteCommand(const char *source) {
 
   setRgb(false, false, true); // blue: remote command executing
   pressServoOnce(pcPowerServo);
-  beep(2);
+  pcPowerBeepsAfterServo = 2;
 }
 
 void setAlarm(bool enabled, bool pressPcPower, const char *source) {
@@ -364,6 +389,7 @@ void setAlarm(bool enabled, bool pressPcPower, const char *source) {
     lcd.print("PC Power Press");
     setRgb(false, false, true); // blue: PC power command executing
     pressServoOnce(pcPowerServo);
+    pcPowerBeepsAfterServo = 2;
   } else {
     lcd.print(source);
     lcd.print(" cmd");
@@ -1479,6 +1505,11 @@ void loop() {
   pollPcPowerServo();
   pollBeeper();
   pollAlarmButton();
+
+  if (isPcPowerServoBusy()) {
+    return;
+  }
+
   updateLcdBacklightByCdsSensor();
 
   int pirState = digitalRead(PIR_PIN);
@@ -1516,6 +1547,13 @@ void loop() {
 #if ENABLE_HA_WS
   pollHaWs();
 #endif
+
+  pollPcPowerServo();
+  pollBeeper();
+
+  if (isPcPowerServoBusy()) {
+    return;
+  }
 
 #if ENABLE_HA_HTTP
   pollHaHttp();
