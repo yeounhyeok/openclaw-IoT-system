@@ -258,6 +258,10 @@ void stopBeeper() {
   beepPhaseAt = 0;
 }
 
+bool isBeeperBusy() {
+  return beepToneOn || beepPulsesRemaining > 0;
+}
+
 void pollBeeper() {
   if (beepPulsesRemaining == 0 && !beepToneOn) {
     return;
@@ -265,7 +269,7 @@ void pollBeeper() {
 
   unsigned long now = millis();
   if (!beepToneOn && now - beepPhaseAt >= BEEP_OFF_MS) {
-    tone(BUZZER_PIN, 1200);
+    tone(BUZZER_PIN, 1200, BEEP_ON_MS);
     beepToneOn = true;
     beepPhaseAt = now;
   } else if (beepToneOn && now - beepPhaseAt >= BEEP_ON_MS) {
@@ -1506,7 +1510,7 @@ void loop() {
   pollBeeper();
   pollAlarmButton();
 
-  if (isPcPowerServoBusy()) {
+  if (isPcPowerServoBusy() || isBeeperBusy()) {
     return;
   }
 
@@ -1551,7 +1555,7 @@ void loop() {
   pollPcPowerServo();
   pollBeeper();
 
-  if (isPcPowerServoBusy()) {
+  if (isPcPowerServoBusy() || isBeeperBusy()) {
     return;
   }
 
