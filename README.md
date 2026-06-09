@@ -12,7 +12,7 @@
 - 메인 보드: Arduino Uno R4 WiFi + HC-05 Bluetooth 모듈
 - 입력 디바이스 4종 / 출력 디바이스 4종으로 과제 조건(입력 3종↑ · 출력 3종↑) 충족
 - 핵심 기능
-  - 버튼으로 알람 토글 및 PC 전원 버튼 누르기
+  - 버튼으로 알람 토글
   - PIR로 사람 움직임 감지 → 알림/알람
   - DHT22로 온습도 표시
   - **CDS 조도센서로 LCD 백라이트 자동 절전(주변이 어두워지면 백라이트 OFF)**
@@ -63,7 +63,7 @@ Fritzing에서 바로 열 수 있는 회로 파일도 포함되어 있습니다.
 | # | 디바이스 | 연결 핀 | 역할 |
 |---|----------|---------|------|
 | 1 | DHT22 온습도 센서 | D2 | 온도/습도 환경값 입력 |
-| 2 | Push Button | D3(ALARM) | 알람 토글 / PC 전원 버튼 누르기 |
+| 2 | Push Button | D3(ALARM) | 알람 토글 |
 | 3 | PIR 인체감지 센서 | D11 | 사람 움직임 감지 입력 |
 | 4 | **CDS 조도센서 (다리 2개)** | A0 | 주변 밝기 입력 → LCD 백라이트 자동 절전 |
 
@@ -135,11 +135,11 @@ Fritzing에서 바로 열 수 있는 회로 파일도 포함되어 있습니다.
 
 실제 제작에서는 Arduino Uno R4 WiFi를 사용한다고 설명하면 됩니다.
 
-- WiFi: Uno R4 WiFi 내장 무선 기능으로 Home Assistant HTTP REST API 연동
+- WiFi: Uno R4 WiFi 내장 무선 기능으로 Home Assistant WSS/HTTP 연동
 - Bluetooth: HC-05 모듈로 Android 앱 근거리 제어
 - PC 전원 누르기: Android Bluetooth 또는 Home Assistant HTTP 명령을 받으면 PC 전원 서보가 동작
 
-현재 `sketch/sketch.ino`에는 Uno R4 WiFi의 내장 BLE 코드, HC-05 Bluetooth UART 코드, WiFi 코드, Home Assistant HTTP REST API 코드가 모두 들어가 있습니다. 단, Uno R4 WiFi의 내장 Bluetooth와 내장 WiFi는 같은 무선 모듈/안테나를 공유하므로 같은 순간에 둘을 동시에 켜는 방식은 사용할 수 없습니다.
+현재 `sketch/sketch.ino`에는 Uno R4 WiFi의 내장 BLE 코드, HC-05 Bluetooth UART 코드, WiFi 코드, Home Assistant WebSocket/HTTP 코드가 모두 들어가 있습니다. 단, Uno R4 WiFi의 내장 Bluetooth와 내장 WiFi는 같은 무선 모듈/안테나를 공유하므로 같은 순간에 둘을 동시에 켜는 방식은 사용할 수 없습니다.
 
 WiFi와 Android Bluetooth 제어를 한 번에 시연하려면 HC-05 모듈을 추가하면 됩니다. 이 경우 Arduino는 내장 WiFi로 공유기/Home Assistant에 붙고, HC-05는 `Serial1`로 Android 명령을 전달합니다.
 
@@ -152,6 +152,7 @@ WiFi와 Android Bluetooth 제어를 한 번에 시연하려면 HC-05 모듈을 �
 #define ENABLE_HC05 1
 #define ENABLE_WIFI 1
 #define ENABLE_HA_HTTP 1
+#define ENABLE_HA_WS 1
 #define HA_USE_SSL 1
 #define ENABLE_MQTT 0
 ```
@@ -164,6 +165,8 @@ WiFi와 Android Bluetooth 제어를 한 번에 시연하려면 HC-05 모듈을 �
 - `ENABLE_WIFI 0`: WiFi 연결 미사용
 - `ENABLE_HA_HTTP 1`: Home Assistant HTTP REST API 연동 사용
 - `ENABLE_HA_HTTP 0`: Home Assistant HTTP 미사용
+- `ENABLE_HA_WS 1`: Home Assistant WebSocket으로 명령 이벤트 수신
+- `ENABLE_HA_WS 0`: WebSocket 미사용, HTTP polling fallback 사용
 - `HA_USE_SSL 1`: `https://` endpoint 사용
 - `HA_USE_SSL 0`: 로컬 `http://` endpoint 사용
 - `ENABLE_MQTT 1`: Home Assistant MQTT 명령/상태 연동 사용
@@ -171,14 +174,15 @@ WiFi와 Android Bluetooth 제어를 한 번에 시연하려면 HC-05 모듈을 �
 
 시연 모드는 아래처럼 나눕니다.
 
-| 시연 | `ENABLE_BLE` | `ENABLE_HC05` | `ENABLE_WIFI` | `ENABLE_HA_HTTP` | `ENABLE_MQTT` |
-|------|--------------|---------------|---------------|------------------|---------------|
-| WiFi + HC-05 + HA HTTP | `0` | `1` | `1` | `1` | `0` |
-| WiFi + HC-05만 | `0` | `1` | `1` | `0` | `0` |
-| 내장 BLE 단독 시연 | `1` | `0` | `0` | `0` | `0` |
-| WiFi 연결/IP 확인 | `0` | `0` | `1` | `0` | `0` |
-| Home Assistant MQTT 제어 | `0` | `0` | `1` | `0` | `1` |
-| Wokwi / 일반 Uno 시뮬레이션 | `0` | `0` | `0` | `0` | `0` |
+| 시연 | `ENABLE_BLE` | `ENABLE_HC05` | `ENABLE_WIFI` | `ENABLE_HA_HTTP` | `ENABLE_HA_WS` | `ENABLE_MQTT` |
+|------|--------------|---------------|---------------|------------------|----------------|---------------|
+| WiFi + HC-05 + HA WSS/HTTP | `0` | `1` | `1` | `1` | `1` | `0` |
+| WiFi + HC-05 + HA HTTP polling | `0` | `1` | `1` | `1` | `0` | `0` |
+| WiFi + HC-05만 | `0` | `1` | `1` | `0` | `0` | `0` |
+| 내장 BLE 단독 시연 | `1` | `0` | `0` | `0` | `0` | `0` |
+| WiFi 연결/IP 확인 | `0` | `0` | `1` | `0` | `0` | `0` |
+| Home Assistant MQTT 제어 | `0` | `0` | `1` | `0` | `0` | `1` |
+| Wokwi / 일반 Uno 시뮬레이션 | `0` | `0` | `0` | `0` | `0` | `0` |
 
 즉, HC-05를 붙이면 과제에서 "WiFi와 Bluetooth가 한 번에 된다"를 같은 업로드로 보여줄 수 있습니다. 단, HC-05는 BLE가 아니라 Bluetooth Classic SPP입니다.
 
@@ -255,9 +259,9 @@ Arduino 코드는 HC-05를 `Serial1`로 읽습니다. Uno R4 WiFi의 USB Serial�
 - HC-05 `TXD`에서 Arduino `D0/RX1`로 가는 선은 보통 바로 연결해도 Arduino가 HIGH로 인식합니다.
 - 코드 기본 UART 속도는 `9600` baud입니다. 대부분 HC-05 기본 통신 속도와 같습니다.
 
-### Home Assistant HTTP 연동값
+### Home Assistant WSS/HTTP 연동값
 
-MQTT broker 없이 Home Assistant REST API로 직접 연결합니다. Home Assistant 공식 REST API는 모든 요청에 `Authorization: Bearer TOKEN` 헤더가 필요합니다.
+MQTT broker 없이 Home Assistant API로 직접 연결합니다. HA → Arduino 명령은 `wss://ha.yeoun.org/api/websocket` 상시 연결로 받고, Arduino → HA helper 제어도 가능하면 WebSocket `call_service`로 되돌려 보냅니다. 온습도/상태 업로드는 REST API `POST /api/states/...`를 느리게 사용합니다. Home Assistant API는 `Authorization: Bearer TOKEN` 인증이 필요합니다.
 
 현재 Arduino 코드는 공개 엔드포인트 `https://ha.yeoun.org` 기준입니다.
 
@@ -281,7 +285,7 @@ Arduino가 사용하는 HA 엔티티는 다음과 같습니다.
 | `sensor.openclaw_status` | Arduino → HA | 알람/감지/온습도/WiFi 상태 |
 | `binary_sensor.openclaw_motion` | Arduino → HA | PIR 움직임 감지 |
 | `input_boolean.openclaw_alarm` | HA → Arduino | 대시보드 토글로 알람 ON/OFF |
-| `input_button.openclaw_pc_power` | HA → Arduino | 대시보드 버튼으로 PC 전원 서보 1회 누름 |
+| `input_boolean.openclaw_pc_power` | HA → Arduino | 대시보드 토글로 PC 전원 서보 1회 누름 |
 | `input_text.openclaw_command` | HA → Arduino | 예비/디버깅용 문자열 명령 |
 
 HA에서 해야 할 일:
@@ -289,13 +293,15 @@ HA에서 해야 할 일:
 1. 프로필에서 Long-Lived Access Token 생성
 2. 설정 → 기기 및 서비스 → Helpers에서 Toggle helper 생성
 3. Toggle helper 엔티티 ID를 `input_boolean.openclaw_alarm`으로 맞춤
-4. Button helper 생성
-5. Button helper 엔티티 ID를 `input_button.openclaw_pc_power`로 맞춤
+4. Toggle helper 생성
+5. Toggle helper 엔티티 ID를 `input_boolean.openclaw_pc_power`로 맞춤
 6. 선택: Text helper를 `input_text.openclaw_command`로 만들면 `PC_POWER`, `ALARM_ON` 같은 문자열 명령도 직접 테스트 가능
 
-Arduino는 `input_boolean.openclaw_alarm` 상태를 따라 알람을 켜고 끕니다. `input_button.openclaw_pc_power`가 눌린 시간이 바뀌면 PC 전원 서보를 1회 누릅니다.
+Arduino는 `input_boolean.openclaw_alarm` 상태를 따라 알람을 켜고 끕니다. `input_boolean.openclaw_pc_power`가 `on`이 되면 PC 전원 서보를 1회 누른 뒤 다시 `off`로 돌립니다. 이 helper는 HA Button helper가 아니라 Toggle helper여야 합니다. 이미 `on`에 머물러 있으면 다음 `turn_on`에서 `state_changed` 이벤트가 안 나므로 서보가 다시 움직이지 않습니다.
 
-HTTP 요청은 루프를 오래 막지 않도록 한 번에 하나씩만 처리합니다. HA 토글/버튼 확인은 0.5초 간격으로 번갈아 수행하고, 물리 버튼/PIR 입력은 네트워크 처리보다 먼저 읽습니다.
+WebSocket이 켜져 있으면 HA 토글/버튼 변경은 `state_changed` 이벤트로 즉시 수신합니다. PC power helper reset과 물리 알람 버튼의 HA 동기화는 WebSocket `call_service`를 우선 사용하고, WS가 끊겼을 때만 HTTP로 fallback합니다. HTTP 요청은 상태 업로드, PIR 상태 전송, fallback helper reset에만 사용하며 루프를 오래 막지 않도록 한 번에 하나씩만 처리합니다. `ENABLE_HA_WS 0`으로 끄면 기존 HTTP polling fallback을 사용합니다.
+
+물리 알람 버튼을 누른 직후에는 로컬 상태를 우선합니다. HA에서 늦게 도착한 이전 WebSocket 이벤트가 알람을 다시 되돌리는 것을 막기 위해 짧은 동기화 구간 동안 반대 상태 이벤트를 무시합니다.
 
 Uno R4 WiFi에서 외부 인터럽트는 D2/D3만 지원합니다. D2는 DHT 센서가 사용하므로, 짧은 버튼 클릭을 안정적으로 잡기 위해 ALARM 버튼은 D3에 연결하고 RGB 빨강은 D12로 옮겼습니다.
 
@@ -316,9 +322,9 @@ HTTP 대신 MQTT를 사용할 때만 이 옵션을 켭니다. 현재 기본 연�
 2. 라이브러리 매니저에서 `LiquidCrystal_I2C`, `DHT11` 설치
 3. 동시 시연이 필요하면 HC-05를 `D0/D1`에 연결
 4. Android 앱에서 Bluetooth Classic SPP 연결 후 문자열 명령 전송 구현
-5. WiFi 시연을 위해 `ENABLE_BLE 0`, `ENABLE_HC05 1`, `ENABLE_WIFI 1`, `ENABLE_HA_HTTP 1`, `HA_USE_SSL 1`로 둠
+5. WiFi 시연을 위해 `ENABLE_BLE 0`, `ENABLE_HC05 1`, `ENABLE_WIFI 1`, `ENABLE_HA_HTTP 1`, `ENABLE_HA_WS 1`, `HA_USE_SSL 1`로 둠
 6. `sketch/arduino_secrets.h`에 WiFi 비밀번호와 Home Assistant Long-Lived Access Token 입력
-7. HA에서 `input_boolean.openclaw_alarm`, `input_button.openclaw_pc_power` helper 생성
+7. HA에서 `input_boolean.openclaw_alarm`, `input_boolean.openclaw_pc_power` helper 생성
 8. 실제 보드 업로드 전 Wokwi만 돌릴 때는 `ENABLE_BLE 0`, `ENABLE_HC05 0`, `ENABLE_WIFI 0`, `ENABLE_HA_HTTP 0`, `ENABLE_MQTT 0`으로 변경
 
 ## 필요 라이브러리 (Arduino IDE)

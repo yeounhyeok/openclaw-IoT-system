@@ -2,7 +2,8 @@
 // Onboard BLE: Android app writes short text commands to the command characteristic.
 // HC-05: Android app writes the same text commands over Bluetooth Classic SPP.
 // WiFi: Uno R4 WiFi connects to the local network and reports connection state.
-// HTTP: optional Home Assistant REST API command/status path over WiFi.
+// WSS: Home Assistant WebSocket command path over WiFi.
+// HTTP: Home Assistant REST API status path over WiFi.
 // MQTT: optional Home Assistant command path over WiFi.
 //
 // UNO R4 WiFi cannot keep Bluetooth and WiFi active at the same time.
@@ -34,6 +35,11 @@
 #define ENABLE_HA_HTTP 1
 #endif
 
+// Set ENABLE_HA_WS to 1 for faster Home Assistant command events over WebSocket.
+#ifndef ENABLE_HA_WS
+#define ENABLE_HA_WS 1
+#endif
+
 // Cloudflare/NPM public endpoint uses HTTPS on port 443.
 #ifndef HA_USE_SSL
 #define HA_USE_SSL 1
@@ -44,12 +50,16 @@
 #define ENABLE_MQTT 0
 #endif
 
-#if ENABLE_BLE && (ENABLE_WIFI || ENABLE_HA_HTTP || ENABLE_MQTT)
+#if ENABLE_BLE && (ENABLE_WIFI || ENABLE_HA_HTTP || ENABLE_HA_WS || ENABLE_MQTT)
 #error "UNO R4 WiFi cannot use built-in BLE and WiFi at the same time. Use HC-05 on Serial1 for simultaneous Bluetooth + WiFi."
 #endif
 
-#if ENABLE_HA_HTTP && !ENABLE_WIFI
+#if (ENABLE_HA_HTTP || ENABLE_HA_WS) && !ENABLE_WIFI
 #error "ENABLE_HA_HTTP requires ENABLE_WIFI 1."
+#endif
+
+#if ENABLE_HA_WS && !ENABLE_HA_HTTP
+#error "ENABLE_HA_WS currently requires ENABLE_HA_HTTP 1 for status posting and helper reset."
 #endif
 
 #if ENABLE_MQTT && !ENABLE_WIFI
@@ -60,7 +70,7 @@
 #include <ArduinoBLE.h>
 #endif
 
-#if ENABLE_WIFI || ENABLE_HA_HTTP || ENABLE_MQTT
+#if ENABLE_WIFI || ENABLE_HA_HTTP || ENABLE_HA_WS || ENABLE_MQTT
 #include <WiFiS3.h>
 #include <string.h>
 #endif
@@ -86,8 +96,11 @@
 #define HA_FAST_POLL_MS 500
 #define HA_COMMAND_POLL_MS 1500
 #define HA_STATUS_POST_MS 15000
+#define HA_WS_RECONNECT_MS 5000
+#define HA_WS_PING_MS 30000
+#define HA_LOCAL_ALARM_GRACE_MS 1500
 
-#if ENABLE_WIFI || ENABLE_HA_HTTP || ENABLE_MQTT
+#if ENABLE_WIFI || ENABLE_HA_HTTP || ENABLE_HA_WS || ENABLE_MQTT
 #ifndef SECRET_WIFI_SSID
 #define SECRET_WIFI_SSID "YOUR_WIFI_SSID"
 #endif
@@ -118,7 +131,7 @@ const char HA_STATUS_ENTITY[] = "sensor.openclaw_status";
 const char HA_MOTION_ENTITY[] = "binary_sensor.openclaw_motion";
 const char HA_COMMAND_ENTITY[] = "input_text.openclaw_command";
 const char HA_ALARM_ENTITY[] = "input_boolean.openclaw_alarm";
-const char HA_PC_POWER_ENTITY[] = "input_button.openclaw_pc_power";
+const char HA_PC_POWER_ENTITY[] = "input_boolean.openclaw_pc_power";
 #endif
 
 #if ENABLE_MQTT
@@ -148,8 +161,11 @@ unsigned long lastWifiAttempt = 0;
 unsigned long lastHaStatusPost = 0;
 unsigned long lastHaCommandPoll = 0;
 unsigned long lastHaFastPoll = 0;
+unsigned long lastHaWsReconnect = 0;
+unsigned long lastHaWsPing = 0;
 unsigned long lastMqttAttempt = 0;
 unsigned long lastAlarmButtonEvent = 0;
+unsigned long lastLocalAlarmChangeAt = 0;
 int lastPirState = LOW;
 int lastAlarmButtonState = HIGH;
 float lastTemperature = NAN;
@@ -158,12 +174,14 @@ bool wifiWasConnected = false;
 String hc05Buffer = "";
 String lastHaCommand = "";
 String lastHaAlarmState = "";
-String lastHaPcPowerState = "";
 bool pendingHaStatusPost = false;
 bool pendingHaMotionOn = false;
 bool pendingHaAlarmSync = false;
+bool pendingHaPcPowerReset = false;
 byte haFastPollStep = 0;
-volatile bool alarmButtonInterruptPending = false;
+volatile byte alarmButtonInterruptCount = 0;
+bool haWsSubscribed = false;
+int haWsNextId = 1;
 
 #if ENABLE_BLE
 BLEService openClawService("19b10000-e8f2-537e-4f6c-d104768a1214");
@@ -182,6 +200,14 @@ BLEStringCharacteristic statusCharacteristic(
 #if ENABLE_MQTT
 WiFiClient wifiClient;
 MqttClient mqttClient(wifiClient);
+#endif
+
+#if ENABLE_HA_WS
+#if HA_USE_SSL
+WiFiSSLClient haWsClient;
+#else
+WiFiClient haWsClient;
+#endif
 #endif
 
 void setRgb(bool r, bool g, bool b) {
@@ -274,16 +300,20 @@ void setAlarm(bool enabled, bool pressPcPower, const char *source) {
 }
 
 void toggleAlarm() {
-  // Local alarm button also presses the PC power button for the physical demo.
-  setAlarm(!alarmOn, true, "Button");
+  setAlarm(!alarmOn, false, "Button");
 }
 
 void onAlarmButtonInterrupt() {
-  alarmButtonInterruptPending = true;
+  if (alarmButtonInterruptCount < 10) {
+    alarmButtonInterruptCount++;
+  }
 }
 
 void handleAlarmButtonEvent() {
+  Serial.println("ALARM button event");
   toggleAlarm();
+  lastLocalAlarmChangeAt = millis();
+  lastHaAlarmState = alarmOn ? "on" : "off";
 #if ENABLE_HA_HTTP
   pendingHaAlarmSync = true;
 #endif
@@ -293,18 +323,20 @@ void handleAlarmButtonEvent() {
 void pollAlarmButton() {
   int currentState = digitalRead(ALARM_BUTTON);
   bool fallingEdge = lastAlarmButtonState == HIGH && currentState == LOW;
-  bool interruptEdge = alarmButtonInterruptPending && currentState == LOW;
+
+  noInterrupts();
+  byte interruptCount = alarmButtonInterruptCount;
+  alarmButtonInterruptCount = 0;
+  interrupts();
+
+  bool interruptEdge = interruptCount > 0;
   unsigned long now = millis();
 
   if ((fallingEdge || interruptEdge) && now - lastAlarmButtonEvent > 250) {
-    alarmButtonInterruptPending = false;
     lastAlarmButtonEvent = now;
     handleAlarmButtonEvent();
   }
 
-  if (currentState == HIGH) {
-    alarmButtonInterruptPending = false;
-  }
   lastAlarmButtonState = currentState;
 }
 
@@ -721,6 +753,41 @@ String extractJsonStringState(const String &body) {
   return body.substring(firstQuote + 1, secondQuote);
 }
 
+String extractJsonStringValue(const String &body, const char *key, int startAt) {
+  String quotedKey = "\"";
+  quotedKey += key;
+  quotedKey += "\"";
+
+  int keyIndex = body.indexOf(quotedKey, startAt);
+  if (keyIndex < 0) {
+    return "";
+  }
+
+  int colon = body.indexOf(':', keyIndex + quotedKey.length());
+  int firstQuote = body.indexOf('"', colon + 1);
+  if (colon < 0 || firstQuote < 0) {
+    return "";
+  }
+
+  String value = "";
+  bool escaped = false;
+  for (int i = firstQuote + 1; i < body.length(); i++) {
+    char ch = body.charAt(i);
+    if (escaped) {
+      value += ch;
+      escaped = false;
+    } else if (ch == '\\') {
+      escaped = true;
+    } else if (ch == '"') {
+      break;
+    } else {
+      value += ch;
+    }
+  }
+
+  return value;
+}
+
 void clearHaCommandEntity() {
   int statusCode = 0;
   String body = "";
@@ -744,6 +811,287 @@ void setHaInputBoolean(const char *entityId, bool enabled) {
     body
   );
 }
+
+#if ENABLE_HA_WS
+void sendHaWsFrame(byte opcode, const String &payload) {
+  if (!haWsClient.connected()) {
+    return;
+  }
+
+  unsigned int length = payload.length();
+  byte mask[4] = { 0x12, 0x34, 0x56, 0x78 };
+
+  haWsClient.write((byte)(0x80 | opcode));
+  if (length <= 125) {
+    haWsClient.write((byte)(0x80 | length));
+  } else {
+    haWsClient.write((byte)(0x80 | 126));
+    haWsClient.write((byte)((length >> 8) & 0xFF));
+    haWsClient.write((byte)(length & 0xFF));
+  }
+
+  haWsClient.write(mask, 4);
+  for (unsigned int i = 0; i < length; i++) {
+    haWsClient.write((byte)(payload.charAt(i) ^ mask[i % 4]));
+  }
+}
+
+void sendHaWsText(const String &message) {
+  sendHaWsFrame(0x1, message);
+}
+
+void sendHaWsPing() {
+  sendHaWsFrame(0x9, "");
+}
+
+void sendHaWsPong(const String &payload) {
+  sendHaWsFrame(0xA, payload);
+}
+
+void sendHaWsAuth() {
+  String auth = "{\"type\":\"auth\",\"access_token\":\"";
+  auth += jsonEscape(String(HA_TOKEN));
+  auth += "\"}";
+  sendHaWsText(auth);
+  Serial.println("HA WS auth sent");
+}
+
+void subscribeHaWsStateChanges() {
+  String request = "{\"id\":";
+  request += haWsNextId++;
+  request += ",\"type\":\"subscribe_events\",\"event_type\":\"state_changed\"}";
+  sendHaWsText(request);
+  haWsSubscribed = true;
+  Serial.println("HA WS subscribed to state_changed");
+}
+
+bool callHaWsInputBoolean(const char *entityId, bool enabled) {
+  if (!haWsClient.connected() || !haWsSubscribed) {
+    return false;
+  }
+
+  String request = "{\"id\":";
+  request += haWsNextId++;
+  request += ",\"type\":\"call_service\",\"domain\":\"input_boolean\",\"service\":\"";
+  request += enabled ? "turn_on" : "turn_off";
+  request += "\",\"service_data\":{\"entity_id\":\"";
+  request += jsonEscape(String(entityId));
+  request += "\"}}";
+
+  sendHaWsText(request);
+  Serial.print("HA WS call_service input_boolean.");
+  Serial.println(enabled ? "turn_on" : "turn_off");
+  return true;
+}
+
+void handleHaWsStateChanged(const String &message) {
+  int entityIndex = message.indexOf("\"entity_id\"");
+  if (entityIndex < 0) {
+    return;
+  }
+
+  String entityId = extractJsonStringValue(message, "entity_id", entityIndex);
+  int newStateIndex = message.indexOf("\"new_state\"", entityIndex);
+  String state = extractJsonStringValue(message, "state", newStateIndex);
+  state.trim();
+
+  if (entityId == HA_ALARM_ENTITY) {
+    if (state == "on" || state == "off") {
+      bool requestedAlarm = state == "on";
+      bool localAlarmSyncWindow = pendingHaAlarmSync
+        || (millis() - lastLocalAlarmChangeAt < HA_LOCAL_ALARM_GRACE_MS);
+
+      if (localAlarmSyncWindow && requestedAlarm != alarmOn) {
+        Serial.println("HA WS alarm event ignored during local button sync");
+        return;
+      }
+
+      lastHaAlarmState = state;
+      if (requestedAlarm != alarmOn) {
+        setAlarm(requestedAlarm, false, "HAWS");
+        pendingHaStatusPost = true;
+      }
+    }
+  } else if (entityId == HA_PC_POWER_ENTITY) {
+    if (state == "on") {
+      Serial.println("HA WS PC power request");
+      pressPcPowerByRemoteCommand("HAWS");
+      pendingHaPcPowerReset = true;
+      pendingHaStatusPost = true;
+    }
+  } else if (entityId == HA_COMMAND_ENTITY) {
+    if (state.length() > 0 && state != "unknown" && state != "unavailable") {
+      if (handleRemoteCommand(state, "HAWS")) {
+        clearHaCommandEntity();
+      }
+    }
+  }
+}
+
+void handleHaWsMessage(const String &message) {
+  if (message.indexOf("\"type\":\"auth_required\"") >= 0) {
+    sendHaWsAuth();
+  } else if (message.indexOf("\"type\":\"auth_ok\"") >= 0) {
+    Serial.println("HA WS auth ok");
+    subscribeHaWsStateChanges();
+    pendingHaPcPowerReset = true;
+  } else if (message.indexOf("\"type\":\"auth_invalid\"") >= 0) {
+    Serial.println("HA WS auth invalid");
+    haWsClient.stop();
+  } else if (message.indexOf("\"type\":\"event\"") >= 0
+      && message.indexOf("\"event_type\":\"state_changed\"") >= 0) {
+    handleHaWsStateChanged(message);
+  }
+}
+
+void connectHaWs() {
+  if (!hasHaHttpConfig() || WiFi.status() != WL_CONNECTED) {
+    return;
+  }
+
+  unsigned long now = millis();
+  if (haWsClient.connected() || now - lastHaWsReconnect < HA_WS_RECONNECT_MS) {
+    return;
+  }
+
+  Serial.println("Connecting HA WS");
+  haWsClient.stop();
+  haWsClient.setTimeout(HA_HTTP_TIMEOUT_MS);
+  if (!haWsClient.connect(HA_HOST, HA_PORT)) {
+    Serial.println("HA WS TCP connect failed");
+    lastHaWsReconnect = now;
+    return;
+  }
+
+  haWsClient.println("GET /api/websocket HTTP/1.1");
+  haWsClient.print("Host: ");
+  haWsClient.print(HA_HOST);
+  haWsClient.print(":");
+  haWsClient.println(HA_PORT);
+  haWsClient.println("Upgrade: websocket");
+  haWsClient.println("Connection: Upgrade");
+  haWsClient.println("Sec-WebSocket-Key: b3BlbmNsYXctaW90LTAwMQ==");
+  haWsClient.println("Sec-WebSocket-Version: 13");
+  haWsClient.println();
+
+  String statusLine = haWsClient.readStringUntil('\n');
+  statusLine.trim();
+  while (haWsClient.connected()) {
+    String header = haWsClient.readStringUntil('\n');
+    header.trim();
+    if (header.length() == 0) {
+      break;
+    }
+  }
+
+  haWsSubscribed = false;
+  lastHaWsReconnect = now;
+
+  if (statusLine.indexOf("101") >= 0 && haWsClient.connected()) {
+    Serial.println("HA WS connected");
+  } else {
+    Serial.print("HA WS handshake failed: ");
+    Serial.println(statusLine);
+    haWsClient.stop();
+  }
+}
+
+bool readHaWsFrame(String &message) {
+  if (!haWsClient.connected() || haWsClient.available() < 2) {
+    return false;
+  }
+
+  int first = haWsClient.read();
+  int second = haWsClient.read();
+  if (first < 0 || second < 0) {
+    return false;
+  }
+
+  byte opcode = first & 0x0F;
+  bool masked = (second & 0x80) != 0;
+  unsigned long length = second & 0x7F;
+
+  if (length == 126) {
+    while (haWsClient.available() < 2) {
+      if (!haWsClient.connected()) return false;
+      delay(1);
+    }
+    length = ((unsigned long)haWsClient.read() << 8) | haWsClient.read();
+  } else if (length == 127) {
+    length = 0;
+    for (int i = 0; i < 8; i++) {
+      while (!haWsClient.available()) {
+        if (!haWsClient.connected()) return false;
+        delay(1);
+      }
+      byte part = haWsClient.read();
+      if (i >= 4) {
+        length = (length << 8) | part;
+      }
+    }
+  }
+
+  byte mask[4] = {0, 0, 0, 0};
+  if (masked) {
+    for (int i = 0; i < 4; i++) {
+      while (!haWsClient.available()) {
+        if (!haWsClient.connected()) return false;
+        delay(1);
+      }
+      mask[i] = haWsClient.read();
+    }
+  }
+
+  message = "";
+  unsigned long deadline = millis() + HA_HTTP_TIMEOUT_MS;
+  for (unsigned long i = 0; i < length; i++) {
+    while (!haWsClient.available()) {
+      if (!haWsClient.connected() || millis() > deadline) return false;
+      delay(1);
+    }
+
+    char ch = (char)haWsClient.read();
+    if (masked) {
+      ch = (char)(ch ^ mask[i % 4]);
+    }
+    if (message.length() < 2500) {
+      message += ch;
+    }
+  }
+
+  if (opcode == 0x8) {
+    Serial.println("HA WS closed by server");
+    haWsClient.stop();
+    return false;
+  }
+  if (opcode == 0x9) {
+    sendHaWsPong(message);
+    return false;
+  }
+  if (opcode != 0x1) {
+    return false;
+  }
+
+  return true;
+}
+
+void pollHaWs() {
+  if (!haWsClient.connected()) {
+    connectHaWs();
+    return;
+  }
+
+  String message = "";
+  if (readHaWsFrame(message)) {
+    handleHaWsMessage(message);
+  }
+
+  if (millis() - lastHaWsPing > HA_WS_PING_MS) {
+    sendHaWsPing();
+    lastHaWsPing = millis();
+  }
+}
+#endif
 
 void pollHaCommand() {
   int statusCode = 0;
@@ -787,6 +1135,7 @@ void pollHaAlarmToggle() {
     lastHaAlarmState = state;
     if ((state == "on") != alarmOn) {
       setAlarm(state == "on", false, "HA");
+      pendingHaStatusPost = true;
     }
     return;
   }
@@ -794,10 +1143,11 @@ void pollHaAlarmToggle() {
   if (state != lastHaAlarmState) {
     lastHaAlarmState = state;
     setAlarm(state == "on", false, "HA");
+    pendingHaStatusPost = true;
   }
 }
 
-void pollHaPcPowerButton() {
+void pollHaPcPowerToggle() {
   int statusCode = 0;
   String body = "";
   String path = String("/api/states/") + HA_PC_POWER_ENTITY;
@@ -808,20 +1158,13 @@ void pollHaPcPowerButton() {
 
   String state = extractJsonStringState(body);
   state.trim();
-  if (state.length() == 0 || state == "unknown" || state == "unavailable") {
+  if (state != "on") {
     return;
   }
 
-  if (lastHaPcPowerState.length() == 0) {
-    lastHaPcPowerState = state;
-    return;
-  }
-
-  if (state != lastHaPcPowerState) {
-    lastHaPcPowerState = state;
-    pressPcPowerByRemoteCommand("HA");
-    pendingHaStatusPost = true;
-  }
+  pressPcPowerByRemoteCommand("HA");
+  setHaInputBoolean(HA_PC_POWER_ENTITY, false);
+  pendingHaStatusPost = true;
 }
 
 void pollHaHttp() {
@@ -831,7 +1174,26 @@ void pollHaHttp() {
 
   unsigned long now = millis();
 
+  if (pendingHaPcPowerReset) {
+#if ENABLE_HA_WS
+    if (callHaWsInputBoolean(HA_PC_POWER_ENTITY, false)) {
+      pendingHaPcPowerReset = false;
+      return;
+    }
+#endif
+    setHaInputBoolean(HA_PC_POWER_ENTITY, false);
+    pendingHaPcPowerReset = false;
+    return;
+  }
+
   if (pendingHaAlarmSync) {
+#if ENABLE_HA_WS
+    if (callHaWsInputBoolean(HA_ALARM_ENTITY, alarmOn)) {
+      lastHaAlarmState = alarmOn ? "on" : "off";
+      pendingHaAlarmSync = false;
+      return;
+    }
+#endif
     setHaInputBoolean(HA_ALARM_ENTITY, alarmOn);
     lastHaAlarmState = alarmOn ? "on" : "off";
     pendingHaAlarmSync = false;
@@ -851,11 +1213,12 @@ void pollHaHttp() {
     return;
   }
 
+#if !ENABLE_HA_WS
   if (now - lastHaFastPoll >= HA_FAST_POLL_MS) {
     if (haFastPollStep % 2 == 0) {
       pollHaAlarmToggle();
     } else {
-      pollHaPcPowerButton();
+      pollHaPcPowerToggle();
     }
     haFastPollStep++;
     lastHaFastPoll = now;
@@ -867,6 +1230,7 @@ void pollHaHttp() {
     lastHaCommandPoll = now;
     return;
   }
+#endif
 
   if (now - lastHaStatusPost >= HA_STATUS_POST_MS) {
     postHaStatus();
@@ -1036,6 +1400,10 @@ void loop() {
 
 #if ENABLE_WIFI || ENABLE_HA_HTTP || ENABLE_MQTT
   pollWifi();
+#endif
+
+#if ENABLE_HA_WS
+  pollHaWs();
 #endif
 
 #if ENABLE_HA_HTTP
