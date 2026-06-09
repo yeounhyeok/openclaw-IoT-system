@@ -1,0 +1,256 @@
+<xml xmlns="http://www.w3.org/1999/xhtml">
+  <block type="component_event" id="pair-click" x="-840" y="-520">
+    <mutation component_type="Button" instance_name="ButtonPair" event_name="Click"></mutation>
+    <field name="COMPONENT_SELECTOR">ButtonPair</field>
+    <statement name="DO">
+      <block type="component_method" id="pair-start">
+        <mutation component_type="ActivityStarter" method_name="StartActivity" is_generic="false" instance_name="ActivityPairDevice"></mutation>
+        <field name="COMPONENT_SELECTOR">ActivityPairDevice</field>
+      </block>
+    </statement>
+  </block>
+
+  <block type="component_event" id="connect-before" x="-840" y="-390">
+    <mutation component_type="ListPicker" instance_name="ListPickerConnect" event_name="BeforePicking"></mutation>
+    <field name="COMPONENT_SELECTOR">ListPickerConnect</field>
+    <statement name="DO">
+      <block type="controls_if" id="connect-before-if" inline="false">
+        <mutation elseif="1" else="1"></mutation>
+        <value name="IF0">
+          <block type="component_set_get" id="bt-isconnected">
+            <mutation component_type="BluetoothClient" set_or_get="get" property_name="IsConnected" is_generic="false" instance_name="Bluetooth"></mutation>
+            <field name="COMPONENT_SELECTOR">Bluetooth</field>
+            <field name="PROP">IsConnected</field>
+          </block>
+        </value>
+        <statement name="DO0">
+          <block type="component_method" id="bt-disconnect">
+            <mutation component_type="BluetoothClient" method_name="Disconnect" is_generic="false" instance_name="Bluetooth"></mutation>
+            <field name="COMPONENT_SELECTOR">Bluetooth</field>
+            <next>
+              <block type="component_set_get" id="label-disconnected" inline="false">
+                <mutation component_type="Label" set_or_get="set" property_name="Text" is_generic="false" instance_name="LabelConnection"></mutation>
+                <field name="COMPONENT_SELECTOR">LabelConnection</field>
+                <field name="PROP">Text</field>
+                <value name="VALUE">
+                  <block type="text" id="text-disconnected">
+                    <field name="TEXT">Disconnected</field>
+                  </block>
+                </value>
+                <next>
+                  <block type="component_set_get" id="picker-connect-text" inline="false">
+                    <mutation component_type="ListPicker" set_or_get="set" property_name="Text" is_generic="false" instance_name="ListPickerConnect"></mutation>
+                    <field name="COMPONENT_SELECTOR">ListPickerConnect</field>
+                    <field name="PROP">Text</field>
+                    <value name="VALUE">
+                      <block type="text" id="text-connect-hc05">
+                        <field name="TEXT">Connect HC-05</field>
+                      </block>
+                    </value>
+                  </block>
+                </next>
+              </block>
+            </next>
+          </block>
+        </statement>
+        <value name="IF1">
+          <block type="logic_negate" id="bt-not-enabled" inline="false">
+            <value name="BOOL">
+              <block type="component_set_get" id="bt-enabled">
+                <mutation component_type="BluetoothClient" set_or_get="get" property_name="Enabled" is_generic="false" instance_name="Bluetooth"></mutation>
+                <field name="COMPONENT_SELECTOR">Bluetooth</field>
+                <field name="PROP">Enabled</field>
+              </block>
+            </value>
+          </block>
+        </value>
+        <statement name="DO1">
+          <block type="component_method" id="bt-turnon">
+            <mutation component_type="ActivityStarter" method_name="StartActivity" is_generic="false" instance_name="ActivityTurnOnBluetooth"></mutation>
+            <field name="COMPONENT_SELECTOR">ActivityTurnOnBluetooth</field>
+          </block>
+        </statement>
+        <statement name="ELSE">
+          <block type="component_set_get" id="picker-elements" inline="false">
+            <mutation component_type="ListPicker" set_or_get="set" property_name="Elements" is_generic="false" instance_name="ListPickerConnect"></mutation>
+            <field name="COMPONENT_SELECTOR">ListPickerConnect</field>
+            <field name="PROP">Elements</field>
+            <value name="VALUE">
+              <block type="component_set_get" id="bt-addresses">
+                <mutation component_type="BluetoothClient" set_or_get="get" property_name="AddressesAndNames" is_generic="false" instance_name="Bluetooth"></mutation>
+                <field name="COMPONENT_SELECTOR">Bluetooth</field>
+                <field name="PROP">AddressesAndNames</field>
+              </block>
+            </value>
+          </block>
+        </statement>
+      </block>
+    </statement>
+  </block>
+
+  <block type="component_event" id="connect-after" x="-840" y="-110">
+    <mutation component_type="ListPicker" instance_name="ListPickerConnect" event_name="AfterPicking"></mutation>
+    <field name="COMPONENT_SELECTOR">ListPickerConnect</field>
+    <statement name="DO">
+      <block type="controls_if" id="connect-after-if" inline="false">
+        <mutation else="1"></mutation>
+        <value name="IF0">
+          <block type="component_method" id="bt-connect" inline="false">
+            <mutation component_type="BluetoothClient" method_name="Connect" is_generic="false" instance_name="Bluetooth"></mutation>
+            <field name="COMPONENT_SELECTOR">Bluetooth</field>
+            <value name="ARG0">
+              <block type="component_set_get" id="picker-selection">
+                <mutation component_type="ListPicker" set_or_get="get" property_name="Selection" is_generic="false" instance_name="ListPickerConnect"></mutation>
+                <field name="COMPONENT_SELECTOR">ListPickerConnect</field>
+                <field name="PROP">Selection</field>
+              </block>
+            </value>
+          </block>
+        </value>
+        <statement name="DO0">
+          <block type="component_set_get" id="label-connected" inline="false">
+            <mutation component_type="Label" set_or_get="set" property_name="Text" is_generic="false" instance_name="LabelConnection"></mutation>
+            <field name="COMPONENT_SELECTOR">LabelConnection</field>
+            <field name="PROP">Text</field>
+            <value name="VALUE">
+              <block type="text" id="text-connected">
+                <field name="TEXT">Connected</field>
+              </block>
+            </value>
+            <next>
+              <block type="component_set_get" id="picker-disconnect-text" inline="false">
+                <mutation component_type="ListPicker" set_or_get="set" property_name="Text" is_generic="false" instance_name="ListPickerConnect"></mutation>
+                <field name="COMPONENT_SELECTOR">ListPickerConnect</field>
+                <field name="PROP">Text</field>
+                <value name="VALUE">
+                  <block type="text" id="text-disconnect">
+                    <field name="TEXT">Disconnect</field>
+                  </block>
+                </value>
+              </block>
+            </next>
+          </block>
+        </statement>
+        <statement name="ELSE">
+          <block type="component_set_get" id="label-failed" inline="false">
+            <mutation component_type="Label" set_or_get="set" property_name="Text" is_generic="false" instance_name="LabelConnection"></mutation>
+            <field name="COMPONENT_SELECTOR">LabelConnection</field>
+            <field name="PROP">Text</field>
+            <value name="VALUE">
+              <block type="text" id="text-failed">
+                <field name="TEXT">Connection failed</field>
+              </block>
+            </value>
+          </block>
+        </statement>
+      </block>
+    </statement>
+  </block>
+
+  <block type="component_event" id="pc-click" x="-340" y="-520">
+    <mutation component_type="Button" instance_name="ButtonPcPower" event_name="Click"></mutation>
+    <field name="COMPONENT_SELECTOR">ButtonPcPower</field>
+    <statement name="DO">
+      <block type="controls_if" id="pc-if" inline="false">
+        <value name="IF0"><block type="component_set_get" id="pc-connected"><mutation component_type="BluetoothClient" set_or_get="get" property_name="IsConnected" is_generic="false" instance_name="Bluetooth"></mutation><field name="COMPONENT_SELECTOR">Bluetooth</field><field name="PROP">IsConnected</field></block></value>
+        <statement name="DO0">
+          <block type="component_method" id="pc-send" inline="false"><mutation component_type="BluetoothClient" method_name="SendText" is_generic="false" instance_name="Bluetooth"></mutation><field name="COMPONENT_SELECTOR">Bluetooth</field><value name="ARG0"><block type="text" id="pc-command"><field name="TEXT">PC_POWER;</field></block></value>
+            <next><block type="component_set_get" id="pc-last" inline="false"><mutation component_type="Label" set_or_get="set" property_name="Text" is_generic="false" instance_name="LabelLastCommand"></mutation><field name="COMPONENT_SELECTOR">LabelLastCommand</field><field name="PROP">Text</field><value name="VALUE"><block type="text" id="pc-last-text"><field name="TEXT">Last command: PC_POWER</field></block></value></block></next>
+          </block>
+        </statement>
+      </block>
+    </statement>
+  </block>
+
+  <block type="component_event" id="alarm-toggle-click" x="-340" y="-340">
+    <mutation component_type="Button" instance_name="ButtonAlarmToggle" event_name="Click"></mutation>
+    <field name="COMPONENT_SELECTOR">ButtonAlarmToggle</field>
+    <statement name="DO">
+      <block type="controls_if" id="toggle-if" inline="false">
+        <value name="IF0"><block type="component_set_get" id="toggle-connected"><mutation component_type="BluetoothClient" set_or_get="get" property_name="IsConnected" is_generic="false" instance_name="Bluetooth"></mutation><field name="COMPONENT_SELECTOR">Bluetooth</field><field name="PROP">IsConnected</field></block></value>
+        <statement name="DO0"><block type="component_method" id="toggle-send" inline="false"><mutation component_type="BluetoothClient" method_name="SendText" is_generic="false" instance_name="Bluetooth"></mutation><field name="COMPONENT_SELECTOR">Bluetooth</field><value name="ARG0"><block type="text" id="toggle-command"><field name="TEXT">ALARM_TOGGLE;</field></block></value><next><block type="component_set_get" id="toggle-last" inline="false"><mutation component_type="Label" set_or_get="set" property_name="Text" is_generic="false" instance_name="LabelLastCommand"></mutation><field name="COMPONENT_SELECTOR">LabelLastCommand</field><field name="PROP">Text</field><value name="VALUE"><block type="text" id="toggle-last-text"><field name="TEXT">Last command: ALARM_TOGGLE</field></block></value></block></next></block></statement>
+      </block>
+    </statement>
+  </block>
+
+  <block type="component_event" id="alarm-on-click" x="-340" y="-180">
+    <mutation component_type="Button" instance_name="ButtonAlarmOn" event_name="Click"></mutation>
+    <field name="COMPONENT_SELECTOR">ButtonAlarmOn</field>
+    <statement name="DO">
+      <block type="controls_if" id="on-if" inline="false">
+        <value name="IF0"><block type="component_set_get" id="on-connected"><mutation component_type="BluetoothClient" set_or_get="get" property_name="IsConnected" is_generic="false" instance_name="Bluetooth"></mutation><field name="COMPONENT_SELECTOR">Bluetooth</field><field name="PROP">IsConnected</field></block></value>
+        <statement name="DO0"><block type="component_method" id="on-send" inline="false"><mutation component_type="BluetoothClient" method_name="SendText" is_generic="false" instance_name="Bluetooth"></mutation><field name="COMPONENT_SELECTOR">Bluetooth</field><value name="ARG0"><block type="text" id="on-command"><field name="TEXT">ALARM_ON;</field></block></value><next><block type="component_set_get" id="on-last" inline="false"><mutation component_type="Label" set_or_get="set" property_name="Text" is_generic="false" instance_name="LabelLastCommand"></mutation><field name="COMPONENT_SELECTOR">LabelLastCommand</field><field name="PROP">Text</field><value name="VALUE"><block type="text" id="on-last-text"><field name="TEXT">Last command: ALARM_ON</field></block></value></block></next></block></statement>
+      </block>
+    </statement>
+  </block>
+
+  <block type="component_event" id="alarm-off-click" x="-340" y="-20">
+    <mutation component_type="Button" instance_name="ButtonAlarmOff" event_name="Click"></mutation>
+    <field name="COMPONENT_SELECTOR">ButtonAlarmOff</field>
+    <statement name="DO">
+      <block type="controls_if" id="off-if" inline="false">
+        <value name="IF0"><block type="component_set_get" id="off-connected"><mutation component_type="BluetoothClient" set_or_get="get" property_name="IsConnected" is_generic="false" instance_name="Bluetooth"></mutation><field name="COMPONENT_SELECTOR">Bluetooth</field><field name="PROP">IsConnected</field></block></value>
+        <statement name="DO0"><block type="component_method" id="off-send" inline="false"><mutation component_type="BluetoothClient" method_name="SendText" is_generic="false" instance_name="Bluetooth"></mutation><field name="COMPONENT_SELECTOR">Bluetooth</field><value name="ARG0"><block type="text" id="off-command"><field name="TEXT">ALARM_OFF;</field></block></value><next><block type="component_set_get" id="off-last" inline="false"><mutation component_type="Label" set_or_get="set" property_name="Text" is_generic="false" instance_name="LabelLastCommand"></mutation><field name="COMPONENT_SELECTOR">LabelLastCommand</field><field name="PROP">Text</field><value name="VALUE"><block type="text" id="off-last-text"><field name="TEXT">Last command: ALARM_OFF</field></block></value></block></next></block></statement>
+      </block>
+    </statement>
+  </block>
+
+  <block type="component_event" id="status-click" x="120" y="-520">
+    <mutation component_type="Button" instance_name="ButtonStatus" event_name="Click"></mutation>
+    <field name="COMPONENT_SELECTOR">ButtonStatus</field>
+    <statement name="DO">
+      <block type="controls_if" id="status-if" inline="false">
+        <value name="IF0"><block type="component_set_get" id="status-connected"><mutation component_type="BluetoothClient" set_or_get="get" property_name="IsConnected" is_generic="false" instance_name="Bluetooth"></mutation><field name="COMPONENT_SELECTOR">Bluetooth</field><field name="PROP">IsConnected</field></block></value>
+        <statement name="DO0"><block type="component_method" id="status-send" inline="false"><mutation component_type="BluetoothClient" method_name="SendText" is_generic="false" instance_name="Bluetooth"></mutation><field name="COMPONENT_SELECTOR">Bluetooth</field><value name="ARG0"><block type="text" id="status-command"><field name="TEXT">STATUS;</field></block></value><next><block type="component_set_get" id="status-last" inline="false"><mutation component_type="Label" set_or_get="set" property_name="Text" is_generic="false" instance_name="LabelLastCommand"></mutation><field name="COMPONENT_SELECTOR">LabelLastCommand</field><field name="PROP">Text</field><value name="VALUE"><block type="text" id="status-last-text"><field name="TEXT">Last command: STATUS</field></block></value></block></next></block></statement>
+      </block>
+    </statement>
+  </block>
+
+  <block type="component_event" id="custom-click" x="120" y="-340">
+    <mutation component_type="Button" instance_name="ButtonSendCustom" event_name="Click"></mutation>
+    <field name="COMPONENT_SELECTOR">ButtonSendCustom</field>
+    <statement name="DO">
+      <block type="controls_if" id="custom-if" inline="false">
+        <value name="IF0"><block type="component_set_get" id="custom-connected"><mutation component_type="BluetoothClient" set_or_get="get" property_name="IsConnected" is_generic="false" instance_name="Bluetooth"></mutation><field name="COMPONENT_SELECTOR">Bluetooth</field><field name="PROP">IsConnected</field></block></value>
+        <statement name="DO0"><block type="component_method" id="custom-send-text" inline="false"><mutation component_type="BluetoothClient" method_name="SendText" is_generic="false" instance_name="Bluetooth"></mutation><field name="COMPONENT_SELECTOR">Bluetooth</field><value name="ARG0"><block type="component_set_get" id="custom-text"><mutation component_type="TextBox" set_or_get="get" property_name="Text" is_generic="false" instance_name="TextBoxCustom"></mutation><field name="COMPONENT_SELECTOR">TextBoxCustom</field><field name="PROP">Text</field></block></value><next><block type="component_method" id="custom-send-delim" inline="false"><mutation component_type="BluetoothClient" method_name="SendText" is_generic="false" instance_name="Bluetooth"></mutation><field name="COMPONENT_SELECTOR">Bluetooth</field><value name="ARG0"><block type="text" id="custom-delim"><field name="TEXT">;</field></block></value><next><block type="component_set_get" id="custom-last" inline="false"><mutation component_type="Label" set_or_get="set" property_name="Text" is_generic="false" instance_name="LabelLastCommand"></mutation><field name="COMPONENT_SELECTOR">LabelLastCommand</field><field name="PROP">Text</field><value name="VALUE"><block type="text" id="custom-last-text"><field name="TEXT">Last command: custom</field></block></value></block></next></block></next></block></statement>
+      </block>
+    </statement>
+  </block>
+
+  <block type="component_event" id="clock-timer" x="120" y="-120">
+    <mutation component_type="Clock" instance_name="ClockStatus" event_name="Timer"></mutation>
+    <field name="COMPONENT_SELECTOR">ClockStatus</field>
+    <statement name="DO">
+      <block type="controls_if" id="clock-if-connected" inline="false">
+        <value name="IF0"><block type="component_set_get" id="clock-connected"><mutation component_type="BluetoothClient" set_or_get="get" property_name="IsConnected" is_generic="false" instance_name="Bluetooth"></mutation><field name="COMPONENT_SELECTOR">Bluetooth</field><field name="PROP">IsConnected</field></block></value>
+        <statement name="DO0">
+          <block type="controls_if" id="clock-if-bytes" inline="false">
+            <value name="IF0">
+              <block type="math_compare" id="bytes-gt-zero" inline="true">
+                <field name="OP">GT</field>
+                <value name="A"><block type="component_method" id="bytes-available"><mutation component_type="BluetoothClient" method_name="BytesAvailableToReceive" is_generic="false" instance_name="Bluetooth"></mutation><field name="COMPONENT_SELECTOR">Bluetooth</field></block></value>
+                <value name="B"><block type="math_number" id="zero"><field name="NUM">0</field></block></value>
+              </block>
+            </value>
+            <statement name="DO0">
+              <block type="component_set_get" id="status-label-set" inline="false">
+                <mutation component_type="Label" set_or_get="set" property_name="Text" is_generic="false" instance_name="LabelStatus"></mutation>
+                <field name="COMPONENT_SELECTOR">LabelStatus</field>
+                <field name="PROP">Text</field>
+                <value name="VALUE">
+                  <block type="component_method" id="receive-text" inline="false">
+                    <mutation component_type="BluetoothClient" method_name="ReceiveText" is_generic="false" instance_name="Bluetooth"></mutation>
+                    <field name="COMPONENT_SELECTOR">Bluetooth</field>
+                    <value name="ARG0"><block type="math_number" id="minus-one"><field name="NUM">-1</field></block></value>
+                  </block>
+                </value>
+              </block>
+            </statement>
+          </block>
+        </statement>
+      </block>
+    </statement>
+  </block>
+
+  <yacodeblocks ya-version="130" language-version="19"></yacodeblocks>
+</xml>

@@ -4,6 +4,8 @@
 
 Home Assistant 앱은 인터넷 제어용이고, 이 앱은 과제의 Bluetooth 근거리 제어용입니다.
 
+바로 가져다 쓸 때는 [../appinventor/OpenClawRemote.aia](../appinventor/OpenClawRemote.aia)를 MIT App Inventor에서 import합니다. 아래 내용은 앱을 직접 만들거나 import 후 블록을 확인할 때 쓰는 설계 설명입니다.
+
 ## 전제
 
 - Arduino: `ENABLE_HC05 1`

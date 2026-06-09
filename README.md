@@ -237,7 +237,7 @@ STATUS
 PC_POWER\n
 ```
 
-MIT App Inventor로 앱을 만들 때는 [docs/appinventor_openclaw_remote.md](docs/appinventor_openclaw_remote.md)를 그대로 따라 만들면 됩니다. 구성은 `Connect HC-05`, `PC Power`, `Alarm Toggle`, `Alarm On/Off`, `Status`, custom command 입력으로 잡았습니다.
+MIT App Inventor로 앱을 만들 때는 [appinventor/OpenClawRemote.aia](appinventor/OpenClawRemote.aia)를 `Projects → Import project (.aia) from my computer`로 가져오면 됩니다. 수동으로 다시 만들거나 블록을 확인할 때는 [docs/appinventor_openclaw_remote.md](docs/appinventor_openclaw_remote.md)를 참고합니다. 구성은 `Pair HC-05`, `Connect HC-05`, `PC Power`, `Alarm Toggle`, `Alarm On/Off`, `Status`, custom command 입력으로 잡았습니다.
 
 ### HC-05 배선
 
