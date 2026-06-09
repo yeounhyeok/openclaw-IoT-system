@@ -14,6 +14,7 @@ Use this skill when the user asks to control or inspect the OpenClaw Arduino dev
 - WebSocket API: `wss://ha.yeoun.org/api/websocket`
 - Authentication: use a Home Assistant long-lived access token from the agent secret store or environment, preferably `HA_TOKEN` or `HOME_ASSISTANT_TOKEN`.
 - Never write, print, commit, or log the token.
+- Arduino command handling is WebSocket-first. REST `/api/states` is mainly used by Arduino for slow status/temperature/humidity uploads.
 
 REST requests require:
 
@@ -33,6 +34,7 @@ Controls from Home Assistant to Arduino:
 
 - `input_boolean.openclaw_alarm`: alarm enable/disable toggle.
 - `input_boolean.openclaw_pc_power`: momentary PC power request. Turn it `on`; Arduino presses the servo once and resets it to `off`.
+- `input_button.openclaw_pc_power`: compatibility PC power button helper. Pressing it also triggers the servo once.
 - `input_text.openclaw_command`: fallback/debug text command.
 
 Supported text commands:
@@ -84,12 +86,20 @@ Read motion:
 GET https://ha.yeoun.org/api/states/binary_sensor.openclaw_motion
 ```
 
-Press PC power once:
+Press PC power once using the preferred toggle helper:
 
 ```http
 POST https://ha.yeoun.org/api/services/input_boolean/turn_on
 
 {"entity_id":"input_boolean.openclaw_pc_power"}
+```
+
+Press PC power once using the compatibility button helper:
+
+```http
+POST https://ha.yeoun.org/api/services/input_button/press
+
+{"entity_id":"input_button.openclaw_pc_power"}
 ```
 
 Turn alarm on:
@@ -136,6 +146,7 @@ Watch for these `entity_id` values in event data:
 - `binary_sensor.openclaw_motion`
 - `input_boolean.openclaw_alarm`
 - `input_boolean.openclaw_pc_power`
+- `input_button.openclaw_pc_power`
 - `input_text.openclaw_command`
 
 For commands, REST service calls are simplest. If the agent already has an authenticated WebSocket open, it may send Home Assistant `call_service` messages directly.
@@ -146,10 +157,16 @@ Press PC power over WebSocket:
 {"id":2,"type":"call_service","domain":"input_boolean","service":"turn_on","service_data":{"entity_id":"input_boolean.openclaw_pc_power"}}
 ```
 
+Press PC power over WebSocket using the compatibility button helper:
+
+```json
+{"id":3,"type":"call_service","domain":"input_button","service":"press","service_data":{"entity_id":"input_button.openclaw_pc_power"}}
+```
+
 Turn alarm off over WebSocket:
 
 ```json
-{"id":3,"type":"call_service","domain":"input_boolean","service":"turn_off","service_data":{"entity_id":"input_boolean.openclaw_alarm"}}
+{"id":4,"type":"call_service","domain":"input_boolean","service":"turn_off","service_data":{"entity_id":"input_boolean.openclaw_alarm"}}
 ```
 
 Use WebSocket to confirm the state changed or to stream updates.

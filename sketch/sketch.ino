@@ -93,12 +93,17 @@
 
 #define HC05_BAUD 9600
 #define HA_HTTP_TIMEOUT_MS 1200
+#define HA_WS_READ_TIMEOUT_MS 250
 #define HA_FAST_POLL_MS 500
 #define HA_COMMAND_POLL_MS 1500
-#define HA_STATUS_POST_MS 15000
+#define HA_STATUS_POST_MS 30000
 #define HA_WS_RECONNECT_MS 5000
 #define HA_WS_PING_MS 30000
 #define HA_LOCAL_ALARM_GRACE_MS 1500
+#define PC_SERVO_PRESS_MS 300
+#define PC_SERVO_RECOVER_MS 120
+#define BEEP_ON_MS 90
+#define BEEP_OFF_MS 90
 
 #if ENABLE_WIFI || ENABLE_HA_HTTP || ENABLE_HA_WS || ENABLE_MQTT
 #ifndef SECRET_WIFI_SSID
@@ -132,6 +137,7 @@ const char HA_MOTION_ENTITY[] = "binary_sensor.openclaw_motion";
 const char HA_COMMAND_ENTITY[] = "input_text.openclaw_command";
 const char HA_ALARM_ENTITY[] = "input_boolean.openclaw_alarm";
 const char HA_PC_POWER_ENTITY[] = "input_boolean.openclaw_pc_power";
+const char HA_PC_POWER_BUTTON_ENTITY[] = "input_button.openclaw_pc_power";
 #endif
 
 #if ENABLE_MQTT
@@ -166,6 +172,8 @@ unsigned long lastHaWsPing = 0;
 unsigned long lastMqttAttempt = 0;
 unsigned long lastAlarmButtonEvent = 0;
 unsigned long lastLocalAlarmChangeAt = 0;
+unsigned long pcPowerServoPhaseAt = 0;
+unsigned long beepPhaseAt = 0;
 int lastPirState = LOW;
 int lastAlarmButtonState = HIGH;
 float lastTemperature = NAN;
@@ -174,10 +182,16 @@ bool wifiWasConnected = false;
 String hc05Buffer = "";
 String lastHaCommand = "";
 String lastHaAlarmState = "";
+String lastHaPcPowerButtonState = "";
 bool pendingHaStatusPost = false;
 bool pendingHaMotionOn = false;
 bool pendingHaAlarmSync = false;
 bool pendingHaPcPowerReset = false;
+bool pcPowerServoActive = false;
+bool pcPowerServoReturning = false;
+bool beepToneOn = false;
+byte pendingPcPowerPresses = 0;
+byte beepPulsesRemaining = 0;
 byte haFastPollStep = 0;
 volatile byte alarmButtonInterruptCount = 0;
 bool haWsSubscribed = false;
@@ -217,18 +231,82 @@ void setRgb(bool r, bool g, bool b) {
 }
 
 void beep(int count) {
-  for (int i = 0; i < count; i++) {
-    tone(BUZZER_PIN, 1200, 120);
-    delay(180);
+  if (count <= 0) {
+    return;
   }
-  noTone(BUZZER_PIN);
+
+  byte requested = (byte)(count > 8 ? 8 : count);
+  if (requested > beepPulsesRemaining) {
+    beepPulsesRemaining = requested;
+  }
+
+  if (!beepToneOn && beepPhaseAt == 0) {
+    beepPhaseAt = millis() - BEEP_OFF_MS;
+  }
+}
+
+void pollBeeper() {
+  if (beepPulsesRemaining == 0 && !beepToneOn) {
+    return;
+  }
+
+  unsigned long now = millis();
+  if (!beepToneOn && now - beepPhaseAt >= BEEP_OFF_MS) {
+    tone(BUZZER_PIN, 1200);
+    beepToneOn = true;
+    beepPhaseAt = now;
+  } else if (beepToneOn && now - beepPhaseAt >= BEEP_ON_MS) {
+    noTone(BUZZER_PIN);
+    beepToneOn = false;
+    beepPhaseAt = now;
+    if (beepPulsesRemaining > 0) {
+      beepPulsesRemaining--;
+    }
+    if (beepPulsesRemaining == 0) {
+      beepPhaseAt = 0;
+    }
+  }
 }
 
 void pressServoOnce(Servo &servo) {
+  if (pcPowerServoActive) {
+    if (pendingPcPowerPresses < 3) {
+      pendingPcPowerPresses++;
+    }
+    Serial.println("PC power servo busy, queued");
+    return;
+  }
+
   servo.write(90);
-  delay(500);
-  servo.write(0);
-  delay(300);
+  pcPowerServoActive = true;
+  pcPowerServoReturning = false;
+  pcPowerServoPhaseAt = millis();
+}
+
+void pollPcPowerServo() {
+  if (!pcPowerServoActive) {
+    return;
+  }
+
+  unsigned long now = millis();
+  if (!pcPowerServoReturning && now - pcPowerServoPhaseAt >= PC_SERVO_PRESS_MS) {
+    pcPowerServo.write(0);
+    pcPowerServoReturning = true;
+    pcPowerServoPhaseAt = now;
+    return;
+  }
+
+  if (pcPowerServoReturning && now - pcPowerServoPhaseAt >= PC_SERVO_RECOVER_MS) {
+    pcPowerServoActive = false;
+    pcPowerServoReturning = false;
+    setRgb(alarmOn, !alarmOn, alarmOn); // purple if alarm armed, green otherwise
+
+    if (pendingPcPowerPresses > 0) {
+      pendingPcPowerPresses--;
+      pressServoOnce(pcPowerServo);
+      beep(1);
+    }
+  }
 }
 
 String buildStatusMessage() {
@@ -259,6 +337,9 @@ String buildStatusMessage() {
 void updateRemoteStatus();
 
 void pressPcPowerByRemoteCommand(const char *source) {
+  Serial.print("PC power servo command from ");
+  Serial.println(source);
+
   lcd.clear();
   lcd.setCursor(0, 0);
   lcd.print("PC Power Press");
@@ -269,7 +350,6 @@ void pressPcPowerByRemoteCommand(const char *source) {
   setRgb(false, false, true); // blue: remote command executing
   pressServoOnce(pcPowerServo);
   beep(2);
-  setRgb(false, true, false); // green: normal
 }
 
 void setAlarm(bool enabled, bool pressPcPower, const char *source) {
@@ -284,7 +364,6 @@ void setAlarm(bool enabled, bool pressPcPower, const char *source) {
     lcd.print("PC Power Press");
     setRgb(false, false, true); // blue: PC power command executing
     pressServoOnce(pcPowerServo);
-    delay(150);
   } else {
     lcd.print(source);
     lcd.print(" cmd");
@@ -909,7 +988,6 @@ void handleHaWsStateChanged(const String &message) {
       lastHaAlarmState = state;
       if (requestedAlarm != alarmOn) {
         setAlarm(requestedAlarm, false, "HAWS");
-        pendingHaStatusPost = true;
       }
     }
   } else if (entityId == HA_PC_POWER_ENTITY) {
@@ -917,7 +995,13 @@ void handleHaWsStateChanged(const String &message) {
       Serial.println("HA WS PC power request");
       pressPcPowerByRemoteCommand("HAWS");
       pendingHaPcPowerReset = true;
-      pendingHaStatusPost = true;
+    }
+  } else if (entityId == HA_PC_POWER_BUTTON_ENTITY) {
+    if (state.length() > 0 && state != "unknown" && state != "unavailable"
+        && state != lastHaPcPowerButtonState) {
+      lastHaPcPowerButtonState = state;
+      Serial.println("HA WS PC power button request");
+      pressPcPowerByRemoteCommand("HAWS-BUTTON");
     }
   } else if (entityId == HA_COMMAND_ENTITY) {
     if (state.length() > 0 && state != "unknown" && state != "unavailable") {
@@ -1043,7 +1127,7 @@ bool readHaWsFrame(String &message) {
   }
 
   message = "";
-  unsigned long deadline = millis() + HA_HTTP_TIMEOUT_MS;
+  unsigned long deadline = millis() + HA_WS_READ_TIMEOUT_MS;
   for (unsigned long i = 0; i < length; i++) {
     while (!haWsClient.available()) {
       if (!haWsClient.connected() || millis() > deadline) return false;
@@ -1081,9 +1165,13 @@ void pollHaWs() {
     return;
   }
 
-  String message = "";
-  if (readHaWsFrame(message)) {
-    handleHaWsMessage(message);
+  for (byte i = 0; i < 4 && haWsClient.available() >= 2; i++) {
+    String message = "";
+    if (readHaWsFrame(message)) {
+      handleHaWsMessage(message);
+    } else {
+      break;
+    }
   }
 
   if (millis() - lastHaWsPing > HA_WS_PING_MS) {
@@ -1135,7 +1223,6 @@ void pollHaAlarmToggle() {
     lastHaAlarmState = state;
     if ((state == "on") != alarmOn) {
       setAlarm(state == "on", false, "HA");
-      pendingHaStatusPost = true;
     }
     return;
   }
@@ -1143,7 +1230,6 @@ void pollHaAlarmToggle() {
   if (state != lastHaAlarmState) {
     lastHaAlarmState = state;
     setAlarm(state == "on", false, "HA");
-    pendingHaStatusPost = true;
   }
 }
 
@@ -1164,7 +1250,32 @@ void pollHaPcPowerToggle() {
 
   pressPcPowerByRemoteCommand("HA");
   setHaInputBoolean(HA_PC_POWER_ENTITY, false);
-  pendingHaStatusPost = true;
+}
+
+void pollHaPcPowerButton() {
+  int statusCode = 0;
+  String body = "";
+  String path = String("/api/states/") + HA_PC_POWER_BUTTON_ENTITY;
+
+  if (!sendHaHttpRequest("GET", path, "", statusCode, body)) {
+    return;
+  }
+
+  String state = extractJsonStringState(body);
+  state.trim();
+  if (state.length() == 0 || state == "unknown" || state == "unavailable") {
+    return;
+  }
+
+  if (lastHaPcPowerButtonState.length() == 0) {
+    lastHaPcPowerButtonState = state;
+    return;
+  }
+
+  if (state != lastHaPcPowerButtonState) {
+    lastHaPcPowerButtonState = state;
+    pressPcPowerByRemoteCommand("HA-BUTTON");
+  }
 }
 
 void pollHaHttp() {
@@ -1217,8 +1328,10 @@ void pollHaHttp() {
   if (now - lastHaFastPoll >= HA_FAST_POLL_MS) {
     if (haFastPollStep % 2 == 0) {
       pollHaAlarmToggle();
-    } else {
+    } else if (haFastPollStep % 4 == 1) {
       pollHaPcPowerToggle();
+    } else {
+      pollHaPcPowerButton();
     }
     haFastPollStep++;
     lastHaFastPoll = now;
@@ -1309,10 +1422,6 @@ void updateRemoteStatus() {
 #if ENABLE_MQTT
   publishMqttMessage(MQTT_STATUS_TOPIC, status);
 #endif
-
-#if ENABLE_HA_HTTP
-  pendingHaStatusPost = true;
-#endif
 }
 
 void setup() {
@@ -1367,6 +1476,8 @@ void setup() {
 }
 
 void loop() {
+  pollPcPowerServo();
+  pollBeeper();
   pollAlarmButton();
   updateLcdBacklightByCdsSensor();
 

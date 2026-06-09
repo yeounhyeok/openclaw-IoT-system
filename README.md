@@ -261,7 +261,7 @@ Arduino 코드는 HC-05를 `Serial1`로 읽습니다. Uno R4 WiFi의 USB Serial�
 
 ### Home Assistant WSS/HTTP 연동값
 
-MQTT broker 없이 Home Assistant API로 직접 연결합니다. HA → Arduino 명령은 `wss://ha.yeoun.org/api/websocket` 상시 연결로 받고, Arduino → HA helper 제어도 가능하면 WebSocket `call_service`로 되돌려 보냅니다. 온습도/상태 업로드는 REST API `POST /api/states/...`를 느리게 사용합니다. Home Assistant API는 `Authorization: Bearer TOKEN` 인증이 필요합니다.
+MQTT broker 없이 Home Assistant API로 직접 연결합니다. HA → Arduino 명령은 `wss://ha.yeoun.org/api/websocket` 상시 연결로 받고, Arduino → HA helper 제어도 가능하면 WebSocket `call_service`로 되돌려 보냅니다. 온습도/상태 엔티티 업로드만 REST API `POST /api/states/...`를 느리게 사용합니다. Home Assistant API는 `Authorization: Bearer TOKEN` 인증이 필요합니다.
 
 현재 Arduino 코드는 공개 엔드포인트 `https://ha.yeoun.org` 기준입니다.
 
@@ -286,6 +286,7 @@ Arduino가 사용하는 HA 엔티티는 다음과 같습니다.
 | `binary_sensor.openclaw_motion` | Arduino → HA | PIR 움직임 감지 |
 | `input_boolean.openclaw_alarm` | HA → Arduino | 대시보드 토글로 알람 ON/OFF |
 | `input_boolean.openclaw_pc_power` | HA → Arduino | 대시보드 토글로 PC 전원 서보 1회 누름 |
+| `input_button.openclaw_pc_power` | HA → Arduino | 호환용 버튼 helper. 누른 시간이 바뀌면 PC 전원 서보 1회 누름 |
 | `input_text.openclaw_command` | HA → Arduino | 예비/디버깅용 문자열 명령 |
 
 HA에서 해야 할 일:
@@ -297,9 +298,11 @@ HA에서 해야 할 일:
 5. Toggle helper 엔티티 ID를 `input_boolean.openclaw_pc_power`로 맞춤
 6. 선택: Text helper를 `input_text.openclaw_command`로 만들면 `PC_POWER`, `ALARM_ON` 같은 문자열 명령도 직접 테스트 가능
 
-Arduino는 `input_boolean.openclaw_alarm` 상태를 따라 알람을 켜고 끕니다. `input_boolean.openclaw_pc_power`가 `on`이 되면 PC 전원 서보를 1회 누른 뒤 다시 `off`로 돌립니다. 이 helper는 HA Button helper가 아니라 Toggle helper여야 합니다. 이미 `on`에 머물러 있으면 다음 `turn_on`에서 `state_changed` 이벤트가 안 나므로 서보가 다시 움직이지 않습니다.
+Arduino는 `input_boolean.openclaw_alarm` 상태를 따라 알람을 켜고 끕니다. PC 전원은 `input_boolean.openclaw_pc_power`가 `on`이 되면 서보를 1회 누른 뒤 다시 `off`로 돌립니다. 기존에 `input_button.openclaw_pc_power`를 만들어 둔 경우도 호환되며, 버튼 state timestamp가 바뀔 때 서보를 1회 누릅니다. 권장값은 `input_boolean.openclaw_pc_power`입니다. 이미 `on`에 머물러 있으면 다음 `turn_on`에서 `state_changed` 이벤트가 안 나므로 서보가 다시 움직이지 않습니다.
 
-WebSocket이 켜져 있으면 HA 토글/버튼 변경은 `state_changed` 이벤트로 즉시 수신합니다. PC power helper reset과 물리 알람 버튼의 HA 동기화는 WebSocket `call_service`를 우선 사용하고, WS가 끊겼을 때만 HTTP로 fallback합니다. HTTP 요청은 상태 업로드, PIR 상태 전송, fallback helper reset에만 사용하며 루프를 오래 막지 않도록 한 번에 하나씩만 처리합니다. `ENABLE_HA_WS 0`으로 끄면 기존 HTTP polling fallback을 사용합니다.
+WebSocket이 켜져 있으면 HA 토글/버튼 변경은 `state_changed` 이벤트로 즉시 수신합니다. PC power helper reset과 물리 알람 버튼의 HA 동기화는 WebSocket `call_service`를 우선 사용하고, WS가 끊겼을 때만 HTTP로 fallback합니다. HTTP 요청은 온습도/상태 업로드, PIR 상태 전송, fallback helper reset에만 사용하며 명령 직후에는 즉시 status POST를 하지 않습니다. `ENABLE_HA_WS 0`으로 끄면 기존 HTTP polling fallback을 사용합니다.
+
+PC 전원 서보와 부저는 `delay()`로 loop를 막지 않는 비동기 방식입니다. 따라서 HA에서 PC 전원 버튼을 빠르게 다시 눌러도 WebSocket 수신과 helper reset이 계속 처리됩니다.
 
 물리 알람 버튼을 누른 직후에는 로컬 상태를 우선합니다. HA에서 늦게 도착한 이전 WebSocket 이벤트가 알람을 다시 되돌리는 것을 막기 위해 짧은 동기화 구간 동안 반대 상태 이벤트를 무시합니다.
 
