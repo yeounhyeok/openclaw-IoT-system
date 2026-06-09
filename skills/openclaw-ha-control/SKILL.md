@@ -56,8 +56,8 @@ Supported text commands:
 ## Natural Language Mapping
 
 - "PC 켜", "PC 꺼", "컴퓨터 전원 눌러", "전원 버튼 눌러" -> press `input_button.openclaw_pc_power` via `openclaw-pc-power` (current working path).
-- "알람 켜", "보안 켜" -> turn on `input_boolean.openclaw_alarm`.
-- "알람 꺼", "보안 꺼" -> turn off `input_boolean.openclaw_alarm`.
+- "알람 켜", "보안 켜" -> send `ALARM_ON` through `input_text.openclaw_command` and sync `input_boolean.openclaw_alarm`.
+- "알람 꺼", "보안 꺼" -> send `ALARM_OFF` through `input_text.openclaw_command` and sync `input_boolean.openclaw_alarm`.
 - "상태 확인", "오픈클로 상태", "온습도", "온도", "습도", "움직임 감지됐어?" -> read `sensor.openclaw_status` and, if motion matters, `binary_sensor.openclaw_motion`.
 
 If a PC power request is ambiguous, confirm once before pressing. This command physically actuates a servo connected to a power button.
@@ -130,15 +130,27 @@ POST https://ha.yeoun.org/api/services/input_button/press
 {"entity_id":"input_button.openclaw_pc_power"}
 ```
 
-Turn alarm on:
+Turn alarm on/off. This firmware path is most reliable through `input_text.openclaw_command`; also sync the helper state for dashboard/UI consistency:
+
+```http
+POST https://ha.yeoun.org/api/services/input_text/set_value
+
+{"entity_id":"input_text.openclaw_command","value":"ALARM_ON"}
+```
+
+```http
+POST https://ha.yeoun.org/api/services/input_text/set_value
+
+{"entity_id":"input_text.openclaw_command","value":"ALARM_OFF"}
+```
+
+Optional helper sync:
 
 ```http
 POST https://ha.yeoun.org/api/services/input_boolean/turn_on
 
 {"entity_id":"input_boolean.openclaw_alarm"}
 ```
-
-Turn alarm off:
 
 ```http
 POST https://ha.yeoun.org/api/services/input_boolean/turn_off

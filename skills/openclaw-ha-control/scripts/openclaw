@@ -114,9 +114,14 @@ def motion() -> None:
 
 
 def alarm(on: bool) -> None:
+    # The Arduino firmware reliably reacts to input_text.openclaw_command.
+    # Keep the HA helper in sync too, but do not rely on it as the device trigger.
+    value = "ALARM_ON" if on else "ALARM_OFF"
     svc = "turn_on" if on else "turn_off"
-    d = request("POST", f"/api/services/input_boolean/{svc}", {"entity_id": ALARM_ENTITY})
-    print(json.dumps({"sent": f"input_boolean.{svc}", "entity_id": ALARM_ENTITY, "ok": True}, ensure_ascii=False, separators=(",", ":")))
+    request("POST", f"/api/services/input_boolean/{svc}", {"entity_id": ALARM_ENTITY})
+    request("POST", "/api/services/input_text/set_value", {"entity_id": COMMAND_ENTITY, "value": ""})
+    request("POST", "/api/services/input_text/set_value", {"entity_id": COMMAND_ENTITY, "value": value})
+    print(json.dumps({"sent": "input_text.set_value", "entity_id": COMMAND_ENTITY, "value": value, "synced_helper": ALARM_ENTITY, "ok": True}, ensure_ascii=False, separators=(",", ":")))
 
 
 def pc_power(use_button: bool = True) -> None:
