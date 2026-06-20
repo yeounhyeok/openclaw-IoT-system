@@ -10,10 +10,9 @@
 ## 프로젝트 개요
 
 - 메인 보드: Arduino Uno R4 WiFi + HC-05 Bluetooth 모듈
-- 입력 디바이스 4종 / 출력 디바이스 4종으로 과제 조건(입력 3종↑ · 출력 3종↑) 충족
+- 입력 디바이스 3종 / 출력 디바이스 4종으로 과제 조건(입력 3종↑ · 출력 3종↑) 충족
 - 핵심 기능
   - 버튼으로 알람 토글
-  - PIR로 사람 움직임 감지 → 알림/알람
   - DHT22로 온습도 표시
   - **CDS 조도센서로 LCD 백라이트 자동 절전(주변이 어두워지면 백라이트 OFF)**
   - 서보모터로 PC 전원 버튼 누르기
@@ -51,21 +50,20 @@ Fritzing에서 바로 열 수 있는 회로 파일도 포함되어 있습니다.
 - 열기: Fritzing 실행 → File → Open → `docs/OpenClaw.fzz`
 - 포함 부품(모두 Fritzing 기본 내장 core 부품): Arduino Uno, CDS(photoresistor) + 10k 분압, RGB용 LED 3개 + 220Ω 3개, 푸시버튼 2개, 피에조 부저, 서보 2개
 - 배선은 핀맵표와 동일하게 연결되어 있습니다(점대점 배선). 열고 나서 부품을 드래그해 보기 좋게 정렬하면 됩니다.
-- **참고**: DHT22 / PIR / I2C 1602 LCD 는 Fritzing 기본 core 부품에 없어서(별도 라이브러리 필요) 이 fzz에는 빠져 있습니다. 세 부품을 포함한 전체 구성은 `docs/circuit_schematic.png`(전체 연결도)와 `diagram.json`(Wokwi)에서 확인할 수 있습니다.
+- **참고**: DHT22 / I2C 1602 LCD 는 Fritzing 기본 core 부품에 없어서(별도 라이브러리 필요) 이 fzz에는 빠져 있습니다. 두 부품을 포함한 전체 구성은 `docs/circuit_schematic.png`(전체 연결도)와 `diagram.json`(Wokwi)에서 확인할 수 있습니다.
 - 생성/수정: `python tools/make_fritzing.py` (core 부품의 moduleId·connectorId를 코드에서 직접 지정)
 
 > 이 fzz는 Fritzing core 부품의 공식 moduleId/connectorId를 사용해 생성했고 XML 유효성은 검증했지만,
 > 생성 환경에 Fritzing이 없어 화면 렌더링까지는 확인하지 못했습니다.
 > 열었을 때 부품이 겹쳐 보이면 드래그로 정렬하면 되고, 혹시 누락/오류가 보이면 알려주세요.
 
-## 입력 디바이스 4종
+## 입력 디바이스 3종
 
 | # | 디바이스 | 연결 핀 | 역할 |
 |---|----------|---------|------|
 | 1 | DHT22 온습도 센서 | D2 | 온도/습도 환경값 입력 |
 | 2 | Push Button | D3(ALARM) | 알람 토글 |
-| 3 | PIR 인체감지 센서 | D11 | 사람 움직임 감지 입력 |
-| 4 | **CDS 조도센서 (다리 2개)** | A0 | 주변 밝기 입력 → LCD 백라이트 자동 절전 |
+| 3 | **CDS 조도센서 (다리 2개)** | A0 | 주변 밝기 입력 → LCD 백라이트 자동 절전 |
 
 ## 출력 디바이스 4종
 
@@ -86,7 +84,6 @@ Fritzing에서 바로 열 수 있는 회로 파일도 포함되어 있습니다.
 | D6 | RGB LED B (220Ω 경유) |
 | D8 | Buzzer (+) |
 | D9 | PC 전원 서보 신호 |
-| D11 | PIR OUT |
 | D12 | RGB LED R (220Ω 경유) |
 | A0 | CDS 분압 노드 |
 | A4 / A5 | LCD I2C SDA / SCL |
@@ -121,10 +118,9 @@ Fritzing에서 바로 열 수 있는 회로 파일도 포함되어 있습니다.
 - 시연 방법: 손으로 CDS를 가리면 LCD 백라이트가 꺼지고, 손을 떼면 다시 켜짐
 - 친환경 IoT 포인트: 사용하지 않는 상황에서 표시장치 전력 소모와 빛 공해를 줄임
 
-## 버튼 / PIR / RGB / 부저 동작
+## 버튼 / RGB / 부저 동작
 
 - `ALARM TOGGLE` 버튼 : 알람 ON/OFF 토글 (ON이면 부저 3회, RGB 보라)
-- PIR 감지 : 움직임이 잡히면 LCD에 표시, 알람 ON 상태면 부저 5회 경보
 - RGB LED 상태색
   - 초록 : 정상/대기
   - 보라 : 알람 ON
@@ -209,7 +205,7 @@ Android 앱은 Command Characteristic에 UTF-8 문자열을 write 하면 됩니�
 Status Characteristic은 아래 같은 문자열을 read/notify 합니다.
 
 ```text
-alarm=ON,motion=OFF,temp=25.0,humidity=55
+alarm=ON,temp=25.0,humidity=55
 ```
 
 HC-05를 사용할 때 Android 앱은 BLE GATT가 아니라 Bluetooth Classic SPP로 연결합니다.
@@ -284,8 +280,7 @@ Arduino가 사용하는 HA 엔티티는 다음과 같습니다.
 
 | 엔티티 | 방향 | 역할 |
 |--------|------|------|
-| `sensor.openclaw_status` | Arduino → HA | 알람/감지/온습도/WiFi 상태 |
-| `binary_sensor.openclaw_motion` | Arduino → HA | PIR 움직임 감지 |
+| `sensor.openclaw_status` | Arduino → HA | 알람/온습도/WiFi 상태 |
 | `input_boolean.openclaw_alarm` | HA → Arduino | 대시보드 토글로 알람 ON/OFF |
 | `input_boolean.openclaw_pc_power` | HA → Arduino | 대시보드 토글로 PC 전원 서보 1회 누름 |
 | `input_button.openclaw_pc_power` | HA → Arduino | 호환용 버튼 helper. 누른 시간이 바뀌면 PC 전원 서보 1회 누름 |
@@ -302,7 +297,7 @@ HA에서 해야 할 일:
 
 Arduino는 `input_boolean.openclaw_alarm` 상태를 따라 알람을 켜고 끕니다. PC 전원은 `input_boolean.openclaw_pc_power`가 `on`이 되면 서보를 1회 누른 뒤 다시 `off`로 돌립니다. 기존에 `input_button.openclaw_pc_power`를 만들어 둔 경우도 호환되며, 버튼 state timestamp가 바뀔 때 서보를 1회 누릅니다. 권장값은 `input_boolean.openclaw_pc_power`입니다. 이미 `on`에 머물러 있으면 다음 `turn_on`에서 `state_changed` 이벤트가 안 나므로 서보가 다시 움직이지 않습니다.
 
-WebSocket이 켜져 있으면 HA 토글/버튼 변경은 `state_changed` 이벤트로 즉시 수신합니다. PC power helper reset과 물리 알람 버튼의 HA 동기화는 WebSocket `call_service`를 우선 사용하고, WS가 끊겼을 때만 HTTP로 fallback합니다. HTTP 요청은 온습도/상태 업로드, PIR 상태 전송, fallback helper reset에만 사용하며 명령 직후에는 즉시 status POST를 하지 않습니다. `ENABLE_HA_WS 0`으로 끄면 기존 HTTP polling fallback을 사용합니다.
+WebSocket이 켜져 있으면 HA 토글/버튼 변경은 `state_changed` 이벤트로 즉시 수신합니다. PC power helper reset과 물리 알람 버튼의 HA 동기화는 WebSocket `call_service`를 우선 사용하고, WS가 끊겼을 때만 HTTP로 fallback합니다. HTTP 요청은 온습도/상태 업로드, fallback helper reset에만 사용하며 명령 직후에는 즉시 status POST를 하지 않습니다. `ENABLE_HA_WS 0`으로 끄면 기존 HTTP polling fallback을 사용합니다.
 
 PC 전원 서보와 부저는 `delay()`로 loop를 막지 않는 비동기 방식입니다. 서보 동작 중 들어온 추가 PC 전원 요청은 최대 1회로 병합해 다음 안정 구간에서 실행합니다. 부저는 서보 펄스와 겹치지 않도록 서보가 끝난 뒤 재생하고, 각 `tone()`에 짧은 duration을 걸어 긴 삐 소리가 남지 않게 합니다. 서보/부저 타이밍 중에는 HTTP/status/DHT 같은 느린 작업을 잠깐 건너뛰어, 네트워크 지연 때문에 물리 출력 박자가 밀리는 현상을 줄입니다.
 

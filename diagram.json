@@ -101,13 +101,6 @@
       }
     },
     {
-      "type": "wokwi-pir-motion-sensor",
-      "id": "pir1",
-      "top": -135,
-      "left": 790,
-      "attrs": {}
-    },
-    {
       "type": "wokwi-pushbutton",
       "id": "btnAlarm",
       "top": 300,
@@ -271,30 +264,6 @@
       "dht1:SDA",
       "uno:2",
       "green",
-      [
-        "v0"
-      ]
-    ],
-    [
-      "pir1:VCC",
-      "bb1:tp.32",
-      "red",
-      [
-        "v0"
-      ]
-    ],
-    [
-      "pir1:GND",
-      "bb1:tn.32",
-      "black",
-      [
-        "v0"
-      ]
-    ],
-    [
-      "pir1:OUT",
-      "uno:11",
-      "purple",
       [
         "v0"
       ]

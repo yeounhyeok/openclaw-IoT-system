@@ -18,7 +18,6 @@ DEFAULT_HOST = "ha.yeoun.org"
 DEFAULT_PORT = "443"
 
 STATUS_ENTITY = "sensor.openclaw_status"
-MOTION_ENTITY = "binary_sensor.openclaw_motion"
 ALARM_ENTITY = "input_boolean.openclaw_alarm"
 PC_POWER_ENTITY = "input_boolean.openclaw_pc_power"
 PC_POWER_BUTTON_ENTITY = "input_button.openclaw_pc_power"
@@ -93,7 +92,6 @@ def status() -> None:
         "temperature": a.get("temperature"),
         "humidity": a.get("humidity"),
         "alarm": a.get("alarm"),
-        "motion": a.get("motion"),
         "bluetooth": a.get("bluetooth"),
         "wifi_ip": a.get("wifi_ip"),
         "wifi_rssi": a.get("wifi_rssi"),
@@ -106,11 +104,6 @@ def temp() -> None:
     d = state(STATUS_ENTITY)
     a = d.get("attributes") or {}
     print(json.dumps({"temperature": a.get("temperature"), "humidity": a.get("humidity"), "last_updated": d.get("last_updated")}, ensure_ascii=False, separators=(",", ":")))
-
-
-def motion() -> None:
-    d = state(MOTION_ENTITY)
-    print(json.dumps({"motion": d.get("state"), "last_updated": d.get("last_updated")}, ensure_ascii=False, separators=(",", ":")))
 
 
 def alarm(on: bool) -> None:
@@ -150,7 +143,6 @@ def main() -> None:
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("status", help="read full OpenClaw status")
     sub.add_parser("temp", help="read room temperature/humidity")
-    sub.add_parser("motion", help="read PIR motion state")
     sub.add_parser("alarm-on", help="turn alarm on")
     sub.add_parser("alarm-off", help="turn alarm off")
     sub.add_parser("pc-power", help="press PC power servo once via toggle helper")
@@ -160,7 +152,6 @@ def main() -> None:
     args = p.parse_args()
     if args.cmd == "status": status()
     elif args.cmd == "temp": temp()
-    elif args.cmd == "motion": motion()
     elif args.cmd == "alarm-on": alarm(True)
     elif args.cmd == "alarm-off": alarm(False)
     elif args.cmd == "pc-power": pc_power(True)
