@@ -16,7 +16,7 @@ def out(name):
 # ---------------------------------------------------------------------------
 # 1) Full system block diagram: Arduino Uno IC + peripherals fanned out
 # ---------------------------------------------------------------------------
-left = ["A0", "D2", "D4", "D7", "D11"]
+left = ["A0", "D2", "D4", "D7"]
 right = ["D3", "D5", "D6", "D8", "D9", "D10"]
 top = ["A4", "A5", "5V"]
 bottom = ["GND"]
@@ -26,7 +26,6 @@ periph = {
     "D2": "DHT22  (temp/humi)",
     "D4": "Button: ALARM toggle",
     "D7": "Button: LIGHT toggle",
-    "D11": "PIR motion sensor",
     "D3": "RGB LED  R  (220R)",
     "D5": "RGB LED  G  (220R)",
     "D6": "RGB LED  B  (220R)",

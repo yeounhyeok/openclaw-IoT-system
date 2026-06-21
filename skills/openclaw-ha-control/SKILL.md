@@ -1,6 +1,14 @@
 ---
 name: openclaw-ha-control
-description: Use when controlling or monitoring the OpenClaw Arduino IoT device through Home Assistant at ha.yeoun.org, including PC power servo control, alarm state, motion, temperature, humidity, WiFi status, REST service calls, and WebSocket state observation.
+description: Use when controlling or monitoring the OpenClaw Arduino IoT device through Home Assistant at ha.yeoun.org, including PC power servo control, alarm state, temperature, humidity, WiFi status, REST service calls, and WebSocket state observation.
+version: 1.0.0
+author: Yeounhyeok / Hermes Agent
+license: MIT
+platforms: [linux, macos, windows]
+metadata:
+  hermes:
+    tags: [home-assistant, arduino, iot, openclaw, smart-home, websocket, rest]
+    related_skills: [pc-power-control, yeoun-cloudflare-tunnel-npm, openhue]
 ---
 
 # OpenClaw Home Assistant Control
@@ -12,7 +20,7 @@ Use this skill when the user asks to control or inspect the OpenClaw Arduino dev
 - Home Assistant base URL: `https://ha.yeoun.org`
 - REST API base: `https://ha.yeoun.org/api`
 - WebSocket API: `wss://ha.yeoun.org/api/websocket`
-- Authentication: use a Home Assistant long-lived access token from the agent secret store or environment, preferably `HA_TOKEN` or `HOME_ASSISTANT_TOKEN`.
+- Authentication: use a Home Assistant long-lived access token from the agent secret store or environment, preferably `HA_TOKEN` or `HOME_ASSISTANT_TOKEN`. In this Hermes profile, `HOME_ASSISTANT_TOKEN` may be set in `~/.hermes/.env`.
 - Never write, print, commit, or log the token.
 - Arduino command handling is WebSocket-first. REST `/api/states` is mainly used by Arduino for slow status/temperature/humidity uploads.
 
@@ -27,14 +35,13 @@ Content-Type: application/json
 
 Read-only status from Arduino:
 
-- `sensor.openclaw_status`: main status entity. State is usually `online`; attributes include `light`, `alarm`, `motion`, `bluetooth`, `wifi_ip`, `wifi_rssi`, `temperature`, and `humidity`.
-- `binary_sensor.openclaw_motion`: PIR motion state.
+- `sensor.openclaw_status`: main status entity. State is usually `online`; attributes include `light`, `alarm`, `bluetooth`, `wifi_ip`, `wifi_rssi`, `temperature`, and `humidity`.
 
 Controls from Home Assistant to Arduino:
 
 - `input_boolean.openclaw_alarm`: alarm enable/disable toggle.
-- `input_boolean.openclaw_pc_power`: momentary PC power request. Turn it `on`; Arduino presses the servo once and resets it to `off`.
-- `input_button.openclaw_pc_power`: compatibility PC power button helper. Pressing it also triggers the servo once.
+- `input_boolean.openclaw_pc_power`: momentary PC power request if the toggle helper exists. Turn it `on`; Arduino presses the servo once and resets it to `off`.
+- `input_button.openclaw_pc_power`: current working PC power helper. Pressing it changes the timestamp and triggers the servo once; prefer this path when available.
 - `input_text.openclaw_command`: fallback/debug text command.
 
 Supported text commands:
@@ -47,12 +54,32 @@ Supported text commands:
 
 ## Natural Language Mapping
 
-- "PC 켜", "PC 꺼", "컴퓨터 전원 눌러", "전원 버튼 눌러" -> turn on `input_boolean.openclaw_pc_power`.
-- "알람 켜", "보안 켜" -> turn on `input_boolean.openclaw_alarm`.
-- "알람 꺼", "보안 꺼" -> turn off `input_boolean.openclaw_alarm`.
-- "상태 확인", "오픈클로 상태", "온습도", "온도", "습도", "움직임 감지됐어?" -> read `sensor.openclaw_status` and, if motion matters, `binary_sensor.openclaw_motion`.
+- "PC 켜", "PC 꺼", "컴퓨터 전원 눌러", "전원 버튼 눌러" -> press `input_button.openclaw_pc_power` via `openclaw-pc-power` (current working path).
+- "알람 켜", "보안 켜" -> send `ALARM_ON` through `input_text.openclaw_command` and sync `input_boolean.openclaw_alarm`.
+- "알람 꺼", "보안 꺼" -> send `ALARM_OFF` through `input_text.openclaw_command` and sync `input_boolean.openclaw_alarm`.
+- "상태 확인", "오픈클로 상태", "온습도", "온도", "습도" -> read `sensor.openclaw_status`.
 
 If a PC power request is ambiguous, confirm once before pressing. This command physically actuates a servo connected to a power button.
+
+## Agent Quick Commands
+
+Use the installed one-command wrappers first for fast responses. They load `~/.hermes/.env` themselves and never print the token.
+
+| Intent | Command |
+|---|---|
+| Full status | `openclaw-status` or `openclaw status` |
+| Temperature/humidity | `openclaw-temp` or `openclaw temp` |
+| Alarm on | `openclaw-alarm-on` or `openclaw alarm-on` |
+| Alarm off | `openclaw-alarm-off` or `openclaw alarm-off` |
+| PC power servo press | `openclaw-pc-power` or `openclaw pc-power` |
+| Compatibility button press | `openclaw-pc-power-button` or `openclaw pc-power-button` |
+| Fallback text command | `openclaw command PC_POWER` / `ALARM_TOGGLE` / `ALARM_ON` / `ALARM_OFF` / `STATUS` |
+
+Implementation lives at `skills/openclaw-ha-control/scripts/openclaw`. Optional local wrappers may point to this script. The script sets `User-Agent: curl/8.5.0` because Cloudflare may block Python urllib's default User-Agent with `403 error code: 1010`.
+For setup details, wrapper inventory, and verification commands, see `references/openclaw-cli-setup.md`.
+For the alarm-specific control/verification path and the `input_boolean` vs Arduino status pitfall, see `references/alarm-control-path.md`.
+
+PC power commands physically press the power button once. If user intent is ambiguous, confirm once before running `openclaw-pc-power`.
 
 ## REST Workflow
 
@@ -80,12 +107,6 @@ Use these response fields:
 }
 ```
 
-Read motion:
-
-```http
-GET https://ha.yeoun.org/api/states/binary_sensor.openclaw_motion
-```
-
 Press PC power once using the preferred toggle helper:
 
 ```http
@@ -102,15 +123,27 @@ POST https://ha.yeoun.org/api/services/input_button/press
 {"entity_id":"input_button.openclaw_pc_power"}
 ```
 
-Turn alarm on:
+Turn alarm on/off. This firmware path is most reliable through `input_text.openclaw_command`; also sync the helper state for dashboard/UI consistency:
+
+```http
+POST https://ha.yeoun.org/api/services/input_text/set_value
+
+{"entity_id":"input_text.openclaw_command","value":"ALARM_ON"}
+```
+
+```http
+POST https://ha.yeoun.org/api/services/input_text/set_value
+
+{"entity_id":"input_text.openclaw_command","value":"ALARM_OFF"}
+```
+
+Optional helper sync:
 
 ```http
 POST https://ha.yeoun.org/api/services/input_boolean/turn_on
 
 {"entity_id":"input_boolean.openclaw_alarm"}
 ```
-
-Turn alarm off:
 
 ```http
 POST https://ha.yeoun.org/api/services/input_boolean/turn_off
@@ -143,7 +176,6 @@ Use WebSocket for live state observation when the agent needs immediate updates.
 Watch for these `entity_id` values in event data:
 
 - `sensor.openclaw_status`
-- `binary_sensor.openclaw_motion`
 - `input_boolean.openclaw_alarm`
 - `input_boolean.openclaw_pc_power`
 - `input_button.openclaw_pc_power`
@@ -177,8 +209,10 @@ When receiving `sensor.openclaw_status` events, temperature and humidity are in 
 
 - Answer the user in Korean unless they ask otherwise.
 - For control commands, state exactly what was sent and the resulting HA state if available.
-- For status, summarize only useful fields: online/offline, temperature, humidity, alarm, motion, WiFi IP, RSSI.
-- For temperature/humidity-only requests, answer briefly like `현재 온도 28도, 습도 47%입니다.`
+- For status, call the device/system the `IoT 시스템` rather than `OpenClaw` unless referring to entity IDs or the skill/repo name. Say `IoT 시스템 온라인/오프라인`.
+- Temperature and humidity are the user's room readings. Say `방 온도`, `방 습도`, or `운혁 님 방` rather than device temperature/humidity.
+- Summarize only useful fields: IoT system online/offline, room temperature, room humidity, alarm, WiFi IP, RSSI.
+- For temperature/humidity-only requests, answer briefly like `운혁 님 방은 현재 28도, 습도 47%입니다.`
 - If HA returns `401` or `403`, say the token/auth path is wrong. If it returns `404`, say the entity ID or helper is missing/mismatched.
 
 ## Safety Notes

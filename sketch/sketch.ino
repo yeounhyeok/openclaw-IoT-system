@@ -88,7 +88,6 @@
 #define RGB_B 6
 #define BUZZER_PIN 8
 #define SERVO_PC_PIN 9
-#define PIR_PIN 11
 #define RGB_R 12
 
 #define HC05_BAUD 9600
@@ -138,7 +137,6 @@ int HA_PORT = SECRET_HA_PORT;
 char HA_TOKEN[] = SECRET_HA_TOKEN;
 
 const char HA_STATUS_ENTITY[] = "sensor.openclaw_status";
-const char HA_MOTION_ENTITY[] = "binary_sensor.openclaw_motion";
 const char HA_COMMAND_ENTITY[] = "input_text.openclaw_command";
 const char HA_ALARM_ENTITY[] = "input_boolean.openclaw_alarm";
 const char HA_PC_POWER_ENTITY[] = "input_boolean.openclaw_pc_power";
@@ -154,7 +152,6 @@ char MQTT_PASSWORD[] = "YOUR_MQTT_PASSWORD";
 const char MQTT_CLIENT_ID[] = "openclaw-r4";
 const char MQTT_COMMAND_TOPIC[] = "openclaw/cmd";
 const char MQTT_STATUS_TOPIC[] = "openclaw/status";
-const char MQTT_MOTION_TOPIC[] = "openclaw/sensor/motion";
 #endif
 
 Servo pcPowerServo;
@@ -179,7 +176,6 @@ unsigned long lastAlarmButtonEvent = 0;
 unsigned long lastLocalAlarmChangeAt = 0;
 unsigned long pcPowerServoPhaseAt = 0;
 unsigned long beepPhaseAt = 0;
-int lastPirState = LOW;
 int lastAlarmButtonState = HIGH;
 float lastTemperature = NAN;
 float lastHumidity = NAN;
@@ -189,7 +185,6 @@ String lastHaCommand = "";
 String lastHaAlarmState = "";
 String lastHaPcPowerButtonState = "";
 bool pendingHaStatusPost = false;
-bool pendingHaMotionOn = false;
 bool pendingHaAlarmSync = false;
 bool pendingHaPcPowerReset = false;
 bool beepToneOn = false;
@@ -341,8 +336,6 @@ void pollPcPowerServo() {
 String buildStatusMessage() {
   String status = "alarm=";
   status += alarmOn ? "ON" : "OFF";
-  status += ",motion=";
-  status += lastPirState == HIGH ? "ON" : "OFF";
 
 #if ENABLE_HC05
   status += ",bt=HC05";
@@ -805,8 +798,6 @@ String buildHaStatusPayload() {
   String payload = "{\"state\":\"online\",\"attributes\":{";
   payload += "\"alarm\":\"";
   payload += alarmOn ? "on" : "off";
-  payload += "\",\"motion\":\"";
-  payload += lastPirState == HIGH ? "on" : "off";
   payload += "\",\"bluetooth\":\"hc05\"";
 
   if (WiFi.status() == WL_CONNECTED) {
@@ -834,16 +825,6 @@ void postHaStatus() {
   if (sendHaHttpRequest("POST", path, buildHaStatusPayload(), statusCode, body)) {
     Serial.println("HA status posted");
   }
-}
-
-void postHaMotion(bool detected) {
-  int statusCode = 0;
-  String body = "";
-  String path = String("/api/states/") + HA_MOTION_ENTITY;
-  String payload = "{\"state\":\"";
-  payload += detected ? "on" : "off";
-  payload += "\",\"attributes\":{\"device_class\":\"motion\",\"friendly_name\":\"OpenClaw Motion\"}}";
-  sendHaHttpRequest("POST", path, payload, statusCode, body);
 }
 
 String extractJsonStringState(const String &body) {
@@ -1341,12 +1322,6 @@ void pollHaHttp() {
     return;
   }
 
-  if (pendingHaMotionOn) {
-    postHaMotion(true);
-    pendingHaMotionOn = false;
-    return;
-  }
-
   if (pendingHaStatusPost) {
     postHaStatus();
     pendingHaStatusPost = false;
@@ -1463,7 +1438,6 @@ void setup() {
   pinMode(BUZZER_PIN, OUTPUT);
 
   pinMode(ALARM_BUTTON, INPUT_PULLUP);
-  pinMode(PIR_PIN, INPUT);
   lastAlarmButtonState = digitalRead(ALARM_BUTTON);
 
   int alarmInterrupt = digitalPinToInterrupt(ALARM_BUTTON);
@@ -1515,26 +1489,6 @@ void loop() {
   }
 
   updateLcdBacklightByCdsSensor();
-
-  int pirState = digitalRead(PIR_PIN);
-  if (pirState == HIGH && lastPirState == LOW) {
-    lcd.clear();
-    lcd.setCursor(0, 0);
-    lcd.print("Motion detected");
-    lcd.setCursor(0, 1);
-    lcd.print(alarmOn ? "Alarm triggered" : "BT/WiFi alert");
-    setRgb(false, false, true);
-    if (alarmOn) beep(5); else beep(1);
-
-#if ENABLE_MQTT
-    publishMqttMessage(MQTT_MOTION_TOPIC, "ON");
-#endif
-
-#if ENABLE_HA_HTTP
-    pendingHaMotionOn = true;
-#endif
-  }
-  lastPirState = pirState;
 
 #if ENABLE_BLE
   pollBle();
