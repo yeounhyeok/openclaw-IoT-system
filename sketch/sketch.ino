@@ -293,7 +293,7 @@ void pressServoOnce(Servo &servo) {
   }
 
   stopBeeper();
-  servo.write(90);
+  servo.write(59);
   pcPowerServoState = PC_SERVO_PRESSING;
   pcPowerServoPhaseAt = millis();
 }
